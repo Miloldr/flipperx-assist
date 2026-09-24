@@ -1,0 +1,78 @@
+plugins {
+    id 'net.fabricmc.fabric-loom' version "${loom_version}"
+    id 'java'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+repositories {
+    maven { name = 'Fabric'; url = 'https://maven.fabricmc.net/' }
+    mavenCentral()
+}
+
+loom {
+    splitEnvironmentSourceSets()
+
+    mods {
+        "bzassist" {
+            sourceSet sourceSets.main
+            sourceSet sourceSets.client
+        }
+    }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+}
+
+def javaRelease = 25
+
+processResources {
+    inputs.property "version", project.version
+    inputs.property "minecraft_version", project.minecraft_version
+    inputs.property "java_version", javaRelease
+    filesMatching(["fabric.mod.json", "bzassist.mixins.json"]) {
+        expand "version": project.version,
+               "minecraft_version": project.minecraft_version,
+               "java_version": javaRelease
+    }
+}
+
+java {
+    sourceCompatibility = JavaVersion.toVersion(javaRelease)
+    targetCompatibility = JavaVersion.toVersion(javaRelease)
+    withSourcesJar()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.encoding = "UTF-8"
+    it.options.release = javaRelease
+}
+
+sourceSets {
+    check {
+        java.srcDirs 'src/check/java', 'tools'
+        compileClasspath += sourceSets.client.runtimeClasspath
+        runtimeClasspath += sourceSets.client.runtimeClasspath
+    }
+}
+tasks.register('socketCheck', JavaExec) {
+    dependsOn checkClasses
+    classpath = sourceSets.check.runtimeClasspath
+    mainClass = 'SocketCheck'
+}
+tasks.named('check') { dependsOn 'socketCheck' }
+
+tasks.register('ghostCheck', JavaExec) {
+    dependsOn checkClasses
+    classpath = sourceSets.check.runtimeClasspath
+    mainClass = 'GhostTextCheck'
+}
+tasks.named('check') { dependsOn 'ghostCheck' }

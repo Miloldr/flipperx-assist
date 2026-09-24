@@ -1,0 +1,5 @@
+.gradle/
+build/
+.pytest_cache/
+
+run/

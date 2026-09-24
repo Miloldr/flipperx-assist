@@ -1,0 +1,23 @@
+Copyright (c) 2026 Miloldr. All rights reserved.
+
+This repository holds the source code of the FlipperX Bazaar Assist mod ("the Software"). The
+source is public so anyone can read it and check what the mod does. It is not open source.
+
+You may:
+- download the compiled mod from flipperx.digital and run it in your own Minecraft client
+- read the source code in this repository
+
+You may not, without written permission from the copyright holder:
+- copy, modify or build on the Software or any part of it
+- use any part of the source code in another project
+- redistribute, publish, sell, rent or sublicense the Software or anything built from it
+- remove or change this notice
+
+Forking this repository on GitHub, which GitHub's Terms of Service allow, does not give you any of
+the rights listed above.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
+NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES
+OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

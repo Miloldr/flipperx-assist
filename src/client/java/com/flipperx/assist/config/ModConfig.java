@@ -19,6 +19,7 @@ public final class ModConfig {
     public Map<String, String> tokens = new HashMap<>();
     public int hudX = -1;
     public int hudY = 8;
+    public boolean loginReminders = true;
 
     private static ModConfig instance;
 

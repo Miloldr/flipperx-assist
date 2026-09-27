@@ -76,3 +76,10 @@ tasks.register('ghostCheck', JavaExec) {
     mainClass = 'GhostTextCheck'
 }
 tasks.named('check') { dependsOn 'ghostCheck' }
+
+tasks.register('chatCheck', JavaExec) {
+    dependsOn checkClasses
+    classpath = sourceSets.check.runtimeClasspath
+    mainClass = 'ChatLinkCheck'
+}
+tasks.named('check') { dependsOn 'chatCheck' }

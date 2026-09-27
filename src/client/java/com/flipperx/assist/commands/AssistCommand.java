@@ -8,10 +8,12 @@ import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 
 public final class AssistCommand {
+    public static final String NAME = "flipperx";
+
     private AssistCommand() {}
 
     public static void register(CommandDispatcher<FabricClientCommandSource> dispatcher) {
-        dispatcher.register(ClientCommands.literal("assist")
+        dispatcher.register(ClientCommands.literal(NAME)
                 .then(ClientCommands.literal("hud").then(ClientCommands.literal("reset").executes(ctx -> {
                     AssistClient.get().resetHud();
                     return 1;
@@ -45,6 +47,15 @@ public final class AssistCommand {
                     AssistClient.get().showSummary();
                     return 1;
                 }))
+                .then(ClientCommands.literal("reminders")
+                        .then(ClientCommands.literal("off").executes(ctx -> {
+                            AssistClient.get().loginReminders(false);
+                            return 1;
+                        }))
+                        .then(ClientCommands.literal("on").executes(ctx -> {
+                            AssistClient.get().loginReminders(true);
+                            return 1;
+                        })))
                 .executes(ctx -> {
                     AssistClient.get().printHelp();
                     return 1;

@@ -7,6 +7,7 @@ import com.flipperx.assist.game.ScreenReader;
 import com.flipperx.assist.hud.AssistHud;
 import com.flipperx.assist.hud.ProfitPops;
 import com.flipperx.assist.net.AssistSocket;
+import com.flipperx.assist.net.VersionCheck;
 import com.flipperx.assist.screen.Summary;
 import com.flipperx.assist.screen.SummaryScreen;
 import com.google.gson.JsonObject;
@@ -20,7 +21,6 @@ import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.Minecraft;
@@ -28,9 +28,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.gui.screens.inventory.AbstractSignEditScreen;
 import net.minecraft.client.input.KeyEvent;
-import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.Style;
 import net.minecraft.resources.Identifier;
 
 import org.lwjgl.glfw.GLFW;
@@ -41,8 +39,6 @@ import java.util.Map;
 import net.minecraft.client.gui.screens.ChatScreen;
 
 public class AssistClient implements ClientModInitializer {
-    public static final String PREFIX = "§6[Assist]§r ";
-
     private static final String ENDPOINT = System.getProperty("bzassist.dev") != null
             ? "ws://127.0.0.1:8000/ws/assist"
             : "wss://bot.flipperx.digital/ws/assist";
@@ -81,6 +77,13 @@ public class AssistClient implements ClientModInitializer {
     private Summary lastSummary;
     private long summaryOpenUntil;
     private static final long SUMMARY_WAIT_MS = 60_000;
+    private static final long FIRST_REMINDER_MS = 2 * 60_000;
+    private static final long REMINDER_EVERY_MS = 20 * 60_000;
+    private long nextReminderAt;
+    private static final long VERSION_CHECK_DELAY_MS = 10_000;
+    private static final long VERSION_CHECK_EVERY_MS = 6 * 60 * 60_000;
+    private long versionCheckAt;
+    private String announcedVersion;
 
     public static AssistClient get() {
         return instance;
@@ -141,6 +144,7 @@ public class AssistClient implements ClientModInitializer {
                 linkSent = false;
                 authSent = false;
                 leftWorldAt = 0;
+                nextReminderAt = 0;
             }
             return;
         }
@@ -162,9 +166,11 @@ public class AssistClient implements ClientModInitializer {
             awaitingStep = false;
             discardStep = false;
         }
+        checkVersion(client);
+        remindLogin(uuid);
         if (authBlocked) return;
         if (config.tokenFor(uuid) != null || pendingLinkUuid != null) socket.connect();
-        else STATE.status("Run /assist login to link this account.");
+        else STATE.status("Run /flipperx login to link this account.");
         if (socket.connected()) {
             authConnection = socket.generation();
             if (pendingLinkUuid != null && !linkSent) sendLink();
@@ -182,6 +188,51 @@ public class AssistClient implements ClientModInitializer {
 
         maybeOpenSummary();
         maybeReport();
+    }
+
+    private void checkVersion(Minecraft client) {
+        long now = System.currentTimeMillis();
+        if (versionCheckAt == 0) {
+            versionCheckAt = now + VERSION_CHECK_DELAY_MS;
+        } else if (now >= versionCheckAt) {
+            versionCheckAt = now + VERSION_CHECK_EVERY_MS;
+            VersionCheck.fetch(client::execute, this::announceUpdate);
+        }
+    }
+
+    private void announceUpdate(String latest, String url) {
+        if (latest.equals(announcedVersion)) return;
+        announcedVersion = latest;
+        chat(Component.literal("Version " + latest + " is out, you have " + VersionCheck.current()
+                        + ". Download it from ")
+                .append(Chat.link(Chat.shortUrl(url), url))
+                .append(" and replace the old jar in your mods folder."));
+    }
+
+    private void remindLogin(String uuid) {
+        if (!config.loginReminders || config.tokenFor(uuid) != null || pendingLinkUuid != null) {
+            nextReminderAt = 0;
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (nextReminderAt == 0) {
+            nextReminderAt = now + FIRST_REMINDER_MS;
+        } else if (now >= nextReminderAt) {
+            nextReminderAt = now + REMINDER_EVERY_MS;
+            chat(Component.literal("You are not logged in yet. ")
+                    .append(Chat.button("[Log in]", "/flipperx login"))
+                    .append(" to start flipping, or ")
+                    .append(Chat.button("[stop these reminders]", "/flipperx reminders off"))
+                    .append("."));
+        }
+    }
+
+    public void loginReminders(boolean on) {
+        config.loginReminders = on;
+        config.save();
+        nextReminderAt = 0;
+        chat(on ? "Login reminders are back on."
+                : "No more login reminders. /flipperx reminders on turns them back on.");
     }
 
     private void maybeOpenSummary() {
@@ -258,13 +309,7 @@ public class AssistClient implements ClientModInitializer {
         switch (type) {
             case "link_url" -> {
                 String url = msg.get("url").getAsString();
-                chat("Click to finish linking:");
-                Minecraft.getInstance().execute(() ->
-                        Minecraft.getInstance().gui.hud.getChat().addClientSystemMessage(
-                                Component.literal(PREFIX + "§b" + url).setStyle(
-                                        Style.EMPTY
-                                                .withClickEvent(new ClickEvent.OpenUrl(URI.create(url)))
-                                                .withUnderlined(true))));
+                chat(Component.literal("Click to finish logging in: ").append(Chat.link(url, url)));
             }
             case "link_complete" -> {
                 if (pendingLinkUuid == null || !pendingLinkUuid.equals(currentUuid())) return;
@@ -306,7 +351,7 @@ public class AssistClient implements ClientModInitializer {
                 if (reason.contains("token")) config.clearToken(currentUuid());
                 authBlocked = true;
                 socket.close();
-                STATE.status(reason + ". Run /assist login to reconnect.");
+                STATE.status(reason + ". Run /flipperx login to reconnect.");
                 chat("§c" + STATE.status());
             }
             case "step" -> {
@@ -355,6 +400,7 @@ public class AssistClient implements ClientModInitializer {
         o.addProperty("mc_uuid", uuid);
         Minecraft mc = Minecraft.getInstance();
         o.addProperty("mc_username", mc.getUser() == null ? "" : mc.getUser().getName());
+        o.addProperty("version", VersionCheck.current());
         socket.send(o);
         STATE.status("Authenticating...");
         authAt = System.currentTimeMillis();
@@ -381,7 +427,7 @@ public class AssistClient implements ClientModInitializer {
         o.addProperty("type", "link_request");
         o.addProperty("mc_uuid", pendingLinkUuid);
         o.addProperty("mc_username", Minecraft.getInstance().getUser().getName());
-        o.addProperty("version", "0.1.9");
+        o.addProperty("version", VersionCheck.current());
         linkSent = socket.send(o);
         STATE.status("Finish linking using the link in chat.");
     }
@@ -393,7 +439,7 @@ public class AssistClient implements ClientModInitializer {
         linkSent = false;
         authBlocked = false;
         STATE.reset();
-        STATE.status("Run /assist login to link this account.");
+        STATE.status("Run /flipperx login to link this account.");
         authSent = false;
         announcedReady = false;
         STATE.running(false);
@@ -468,18 +514,23 @@ public class AssistClient implements ClientModInitializer {
     }
 
     public void printHelp() {
-        chat("§e/assist login §7link this account   §e/assist start §7or §e] §7begin");
-        chat("§e/assist hud reset §7restore the panel position");
-        chat("§e/assist goal 500m Hyperion §7save toward something   §e/assist goal clear §7drop it");
-        chat("§e/assist summary §7the last session again");
-        chat("§e/assist stop §7or §e[ §7pause   §e/assist logout §7unlink");
+        chat("§e/flipperx login §7link this account   §e/flipperx start §7or §e] §7begin");
+        chat("§e/flipperx hud reset §7restore the panel position");
+        chat("§e/flipperx goal 500m Hyperion §7save toward something   §e/flipperx goal clear §7drop it");
+        chat("§e/flipperx summary §7the last session again");
+        chat("§e/flipperx stop §7or §e[ §7pause   §e/flipperx logout §7unlink");
+        chat("§e/flipperx reminders off §7no login reminders while logged out");
     }
 
     private static void chat(String text) {
+        chat(Component.literal(text));
+    }
+
+    private static void chat(Component body) {
         Minecraft mc = Minecraft.getInstance();
         mc.execute(() -> {
             if (mc.gui != null && mc.gui.hud != null) {
-                mc.gui.hud.getChat().addClientSystemMessage(Component.literal(PREFIX + text));
+                mc.gui.hud.getChat().addClientSystemMessage(Chat.line(body));
             }
         });
     }

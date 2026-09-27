@@ -39,6 +39,12 @@ public final class SummaryScreen extends Screen {
     private int chartH = CHART_H;
     private int cardX0, cardY0, cardX1, cardY1;
     private int closeX0, closeY0, closeX1, closeY1;
+    private int shareX0, shareY0, shareX1, shareY1;
+    private long copiedAt;
+    private static final long COPIED_MS = 2500;
+    // Longest that fits beside the buttons; Share takes the room the first one needs.
+    private static final String[] HINTS = {
+            "Esc or any movement key closes this", "Esc or moving closes this", "Esc closes this"};
     private float a = 1f;
 
     public SummaryScreen(Summary summary) {
@@ -161,14 +167,33 @@ public final class SummaryScreen extends Screen {
 
         g.fill(left, y, right, y + 1, color(AssistHud.BORDER));
         y += 7;
-        g.text(f, "Esc or any movement key closes this", left, y + 2, color(AssistHud.DIM), false);
         String close = "Close";
-        int bw = f.width(close) + 16;
-        closeX0 = right - bw; closeX1 = right; closeY0 = y - 3; closeY1 = y + 12;
-        boolean hover = mouseX >= closeX0 && mouseX < closeX1 && mouseY >= closeY0 && mouseY < closeY1;
-        g.fill(closeX0, closeY0, closeX1, closeY1, color(hover ? 0x2E2E2E : BUTTON));
-        box(g, closeX0, closeY0, closeX1, closeY1, color(hover ? 0x5A5A5A : 0x3A3A3A));
-        g.text(f, close, closeX0 + 8, y + 1, color(hover ? AssistHud.AMBER : AssistHud.TEXT), false);
+        closeX0 = right - f.width(close) - 16; closeX1 = right; closeY0 = y - 3; closeY1 = y + 12;
+        button(g, f, close, closeX0, closeY0, closeX1, closeY1, y + 1, mouseX, mouseY);
+        int buttonsLeft = closeX0;
+        if (s.shareUrl() != null) {
+            // Wide enough for either label, so the button does not jump when it says Copied.
+            String share = System.currentTimeMillis() - copiedAt < COPIED_MS ? "Copied" : "Share";
+            shareX1 = closeX0 - 4; shareX0 = shareX1 - Math.max(f.width("Share"), f.width("Copied")) - 16;
+            shareY0 = closeY0; shareY1 = closeY1;
+            button(g, f, share, shareX0, shareY0, shareX1, shareY1, y + 1, mouseX, mouseY);
+            buttonsLeft = shareX0;
+        }
+        for (String hint : HINTS) {
+            if (left + f.width(hint) + 6 <= buttonsLeft) {
+                g.text(f, hint, left, y + 2, color(AssistHud.DIM), false);
+                break;
+            }
+        }
+    }
+
+    private void button(GuiGraphicsExtractor g, Font f, String label, int x0, int y0, int x1, int y1, int textY,
+                        int mouseX, int mouseY) {
+        boolean hover = mouseX >= x0 && mouseX < x1 && mouseY >= y0 && mouseY < y1;
+        g.fill(x0, y0, x1, y1, color(hover ? 0x2E2E2E : BUTTON));
+        box(g, x0, y0, x1, y1, color(hover ? 0x5A5A5A : 0x3A3A3A));
+        g.text(f, label, x0 + (x1 - x0 - f.width(label)) / 2, textY,
+                color(hover ? AssistHud.AMBER : AssistHud.TEXT), false);
     }
 
     private int height(int heldLines) {
@@ -302,6 +327,12 @@ public final class SummaryScreen extends Screen {
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubled) {
         double mx = event.x(), my = event.y();
+        if (s.shareUrl() != null && mx >= shareX0 && mx < shareX1 && my >= shareY0 && my < shareY1) {
+            AssistClient client = AssistClient.get();
+            if (client != null) client.shareSummary(s.shareUrl(), s.shareId());
+            copiedAt = System.currentTimeMillis();
+            return true;
+        }
         boolean onClose = mx >= closeX0 && mx < closeX1 && my >= closeY0 && my < closeY1;
         boolean outside = mx < cardX0 || mx >= cardX1 || my < cardY0 || my >= cardY1;
         if (onClose || outside) {

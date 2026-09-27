@@ -5,7 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 public record Summary(double profit, Double perHour, long runSeconds, int sales, float[][] series,
-                      Best best, String held, Goal goal) {
+                      Best best, String held, Goal goal, String shareId, String shareUrl) {
     public record Best(String itemId, String itemName, String icon, int quantity, double profit,
                        float x, double cum) {}
 
@@ -34,7 +34,8 @@ public record Summary(double profit, Double perHour, long runSeconds, int sales,
         }
         Double perHour = o.has("per_hour") && !o.get("per_hour").isJsonNull() ? o.get("per_hour").getAsDouble() : null;
         return new Summary(num(o, "profit"), perHour, (long) num(o, "run_s"),
-                o.has("sales") ? o.get("sales").getAsInt() : 0, series, best, held, goal);
+                o.has("sales") ? o.get("sales").getAsInt() : 0, series, best, held, goal,
+                str(o, "share_id"), str(o, "share_url"));
     }
 
     private static String str(JsonObject o, String key) {

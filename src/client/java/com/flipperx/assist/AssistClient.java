@@ -495,7 +495,6 @@ public class AssistClient implements ClientModInitializer {
         summaryOpenUntil = System.currentTimeMillis() + SUMMARY_WAIT_MS;
     }
 
-    /** Share on the summary: the link goes on the clipboard and into chat, and the server counts it. */
     public void shareSummary(String url, String id) {
         Minecraft.getInstance().keyboardHandler.setClipboard(url);
         chat(Component.literal("Link copied: ").append(Chat.link(Chat.shortUrl(url), url)));

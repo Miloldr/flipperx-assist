@@ -12,7 +12,13 @@
     "SignEditScreenMixin",
     "PlayerListHudAccessor",
     "EditBoxAccessor",
-    "SignEditScreenAccessor"
+    "SignEditScreenAccessor",
+    "CoflSocketMixin",
+    "CoflHttpMixin",
+    "CoflDescriptionMixin",
+    "CoflChatMixin",
+    "CoflMessageMixin",
+    "CoflInfoDisplayMixin"
   ],
   "injectors": {
     "defaultRequire": 1

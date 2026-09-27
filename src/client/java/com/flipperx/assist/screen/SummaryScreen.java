@@ -42,7 +42,6 @@ public final class SummaryScreen extends Screen {
     private int shareX0, shareY0, shareX1, shareY1;
     private long copiedAt;
     private static final long COPIED_MS = 2500;
-    // Longest that fits beside the buttons; Share takes the room the first one needs.
     private static final String[] HINTS = {
             "Esc or any movement key closes this", "Esc or moving closes this", "Esc closes this"};
     private float a = 1f;
@@ -172,7 +171,6 @@ public final class SummaryScreen extends Screen {
         button(g, f, close, closeX0, closeY0, closeX1, closeY1, y + 1, mouseX, mouseY);
         int buttonsLeft = closeX0;
         if (s.shareUrl() != null) {
-            // Wide enough for either label, so the button does not jump when it says Copied.
             String share = System.currentTimeMillis() - copiedAt < COPIED_MS ? "Copied" : "Share";
             shareX1 = closeX0 - 4; shareX0 = shareX1 - Math.max(f.width("Share"), f.width("Copied")) - 16;
             shareY0 = closeY0; shareY1 = closeY1;

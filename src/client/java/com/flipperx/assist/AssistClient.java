@@ -10,12 +10,14 @@ import com.flipperx.assist.net.AssistSocket;
 import com.flipperx.assist.net.VersionCheck;
 import com.flipperx.assist.screen.Summary;
 import com.flipperx.assist.screen.SummaryScreen;
+import com.flipperx.assist.update.Updater;
 import com.google.gson.JsonObject;
 
 import com.mojang.blaze3d.platform.InputConstants;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
@@ -30,6 +32,7 @@ import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.gui.screens.inventory.AbstractSignEditScreen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.Identifier;
 
 import org.lwjgl.glfw.GLFW;
@@ -37,6 +40,7 @@ import org.lwjgl.glfw.GLFW;
 import java.net.URI;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import net.minecraft.client.gui.screens.ChatScreen;
 
 public class AssistClient implements ClientModInitializer {
@@ -90,6 +94,8 @@ public class AssistClient implements ClientModInitializer {
     private static final long VERSION_CHECK_EVERY_MS = 6 * 60 * 60_000;
     private long versionCheckAt;
     private String announcedVersion;
+    private boolean notedVersion;
+    private final AtomicBoolean updating = new AtomicBoolean();
 
     public static AssistClient get() {
         return instance;
@@ -139,6 +145,9 @@ public class AssistClient implements ClientModInitializer {
         });
 
         ClientTickEvents.END_CLIENT_TICK.register(this::onTick);
+
+        Updater.init();
+        ClientLifecycleEvents.CLIENT_STOPPING.register(client -> installOnExit());
     }
 
     private void onTick(Minecraft client) {
@@ -207,17 +216,89 @@ public class AssistClient implements ClientModInitializer {
             versionCheckAt = now + VERSION_CHECK_DELAY_MS;
         } else if (now >= versionCheckAt) {
             versionCheckAt = now + VERSION_CHECK_EVERY_MS;
+            noteVersion();
             VersionCheck.fetch(client::execute, this::announceUpdate);
         }
     }
 
-    private void announceUpdate(String latest, String url) {
-        if (latest.equals(announcedVersion)) return;
-        announcedVersion = latest;
-        chat(Component.literal("Version " + latest + " is out, you have " + VersionCheck.current()
-                        + ". Download it from ")
-                .append(Chat.link(Chat.shortUrl(url), url))
-                .append(" and replace the old jar in your mods folder."));
+    private void noteVersion() {
+        if (notedVersion) return;
+        notedVersion = true;
+        String now = VersionCheck.current();
+        String waiting = Updater.pendingVersion();
+        if (waiting != null && waiting.equals(config.updateTried)) {
+            chat(Component.literal("Version " + waiting + " is downloaded but did not install when you last "
+                            + "closed the game. It tries again when you close it, or download it from ")
+                    .append(Chat.link(Chat.shortUrl(VersionCheck.PAGE), VersionCheck.PAGE))
+                    .append(" and replace the old jar in your mods folder."));
+        } else if (config.lastVersion != null && VersionCheck.compare(now, config.lastVersion) > 0) {
+            chat("Updated to " + now + ".");
+        }
+        if (!now.equals(config.lastVersion)) {
+            config.lastVersion = now;
+            config.save();
+        }
+    }
+
+    private void announceUpdate(VersionCheck.Release release) {
+        if (release.version().equals(announcedVersion)) return;
+        announcedVersion = release.version();
+        if (release.version().equals(Updater.pendingVersion())) return;
+        MutableComponent line = Component.literal("Version " + release.version() + " is out, you have "
+                + VersionCheck.current() + ". ");
+        if (Updater.available() && release.installable()) {
+            chat(line.append(Chat.button("[Update]", "/flipperx update"))
+                    .append(" downloads it now, and it installs when you close Minecraft."));
+        } else {
+            chat(line.append("Download it from ")
+                    .append(Chat.link(Chat.shortUrl(release.page()), release.page()))
+                    .append(" and replace the old jar in your mods folder."));
+        }
+    }
+
+    public void update() {
+        if (!updating.compareAndSet(false, true)) {
+            chat("Already downloading the update.");
+            return;
+        }
+        VersionCheck.latest().whenComplete((release, error) -> {
+            if (error != null || release == null) {
+                updating.set(false);
+                chat("Could not reach the server to check for a new version.");
+                return;
+            }
+            String current = VersionCheck.current();
+            if (VersionCheck.compare(release.version(), current) <= 0) {
+                updating.set(false);
+                chat("You have the latest version, " + current + ".");
+                return;
+            }
+            if (release.version().equals(Updater.pendingVersion())) {
+                updating.set(false);
+                chat(release.version() + " is already downloaded. It installs when you close Minecraft.");
+                return;
+            }
+            chat("Downloading " + release.version() + "...");
+            Updater.download(release).whenComplete((done, failure) -> {
+                updating.set(false);
+                if (failure == null) {
+                    chat("Downloaded " + release.version() + ". It installs when you close Minecraft "
+                            + "and runs the next time you start it.");
+                } else {
+                    chat(Component.literal("Could not update (" + Updater.reason(failure) + "). Download it from ")
+                            .append(Chat.link(Chat.shortUrl(release.page()), release.page()))
+                            .append(" and replace the old jar in your mods folder."));
+                }
+            });
+        });
+    }
+
+    private void installOnExit() {
+        String version = Updater.pendingVersion();
+        if (version == null) return;
+        config.updateTried = version;
+        config.save();
+        Updater.install();
     }
 
     private void remindLogin(String uuid) {
@@ -602,6 +683,7 @@ public class AssistClient implements ClientModInitializer {
         chat("§e/flipperx hud reset §7restore the panel position");
         chat("§e/flipperx goal 500m Hyperion §7save toward something   §e/flipperx goal clear §7drop it");
         chat("§e/flipperx summary §7the last session again");
+        chat("§e/flipperx update §7download the latest version");
         chat("§e/flipperx stop §7or §e[ §7pause   §e/flipperx logout §7unlink");
         chat("§e/flipperx reminders off §7no login reminders while logged out");
     }

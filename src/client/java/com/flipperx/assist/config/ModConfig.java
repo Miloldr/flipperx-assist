@@ -20,6 +20,7 @@ public final class ModConfig {
     public int hudX = -1;
     public int hudY = 8;
     public boolean loginReminders = true;
+    public boolean autocommand = false;
 
     private static ModConfig instance;
 

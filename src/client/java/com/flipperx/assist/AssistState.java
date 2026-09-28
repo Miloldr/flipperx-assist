@@ -28,7 +28,10 @@ public final class AssistState {
         public boolean isCommand() { return "command".equals(kind); }
         public boolean isClick()   { return "click".equals(kind); }
         public boolean isSign()    { return "sign".equals(kind); }
-        public boolean isPlayers() { return isCommand() || isClick() || isSign() || "close".equals(kind); }
+        public boolean isNpc()     { return "npc".equals(kind); }
+        public boolean isPlayers() {
+            return isCommand() || isNpc() || isClick() || isSign() || "close".equals(kind);
+        }
 
         public boolean reads(Step other) {
             return other != null && kind.equals(other.kind) && text.equals(other.text)
@@ -149,7 +152,8 @@ public final class AssistState {
         if (!hud.has("cookie") || hud.get("cookie").isJsonNull()) return null;
         JsonObject c = hud.getAsJsonObject("cookie");
         boolean active = c.has("active") && c.get("active").getAsBoolean();
-        if (!active) return "No booster cookie. Buy one, flips are worth much less without it.";
+        if (!active) return "No Booster Cookie, so you go through the Bazaar NPC in the hub. "
+                + "With one you can type /bz from anywhere, which is faster.";
         String left = c.has("time_left") ? c.get("time_left").getAsString() : "";
         String lower = left.toLowerCase();
         boolean soon = !lower.contains("day") || lower.startsWith("1 day");

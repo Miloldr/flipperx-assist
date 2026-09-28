@@ -346,7 +346,7 @@ public final class AssistHud {
         if (step.isCommand()) return step.label().isEmpty() ? null : step.label();
         String item = step.itemName();
         if (item == null || item.isBlank()) return null;
-        if (step.isClick() || step.isSign()) {
+        if (step.isClick() || step.isSign() || step.isNpc()) {
             return step.label().toLowerCase().contains(item.toLowerCase()) ? null : item;
         }
         return null;

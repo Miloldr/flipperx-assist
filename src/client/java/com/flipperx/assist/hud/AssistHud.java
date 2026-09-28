@@ -1,5 +1,6 @@
 package com.flipperx.assist.hud;
 
+import com.flipperx.assist.AssistClient;
 import com.flipperx.assist.AssistState;
 import com.flipperx.assist.AssistState.Step;
 import com.flipperx.assist.config.ModConfig;
@@ -331,7 +332,10 @@ public final class AssistHud {
 
     private static String headline(Step step) {
         return switch (step.kind()) {
-            case "command" -> "Type /" + step.text();
+            case "command" -> {
+                String key = AssistClient.get() == null ? null : AssistClient.get().autocommandKey();
+                yield "Type /" + step.text() + (key == null ? "" : " or press " + key);
+            }
             case "click" -> step.label();
             case "sign" -> "Type " + grouped(step.text()) + " on the sign";
             case "close" -> step.label();

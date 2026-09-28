@@ -47,6 +47,19 @@ public final class AssistCommand {
                     AssistClient.get().showSummary();
                     return 1;
                 }))
+                .then(ClientCommands.literal("config").then(ClientCommands.literal("autocommand")
+                        .executes(ctx -> {
+                            AssistClient.get().autocommand(null);
+                            return 1;
+                        })
+                        .then(ClientCommands.literal("enabled").executes(ctx -> {
+                            AssistClient.get().autocommand(true);
+                            return 1;
+                        }))
+                        .then(ClientCommands.literal("disabled").executes(ctx -> {
+                            AssistClient.get().autocommand(false);
+                            return 1;
+                        }))))
                 .then(ClientCommands.literal("reminders")
                         .then(ClientCommands.literal("off").executes(ctx -> {
                             AssistClient.get().loginReminders(false);

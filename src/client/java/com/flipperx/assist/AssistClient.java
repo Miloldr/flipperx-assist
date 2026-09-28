@@ -24,6 +24,7 @@ import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.gui.screens.inventory.AbstractSignEditScreen;
@@ -53,6 +54,11 @@ public class AssistClient implements ClientModInitializer {
 
     private KeyMapping startKey;
     private KeyMapping stopKey;
+    private KeyMapping commandKey;
+    private boolean confirmAutocommand;
+    private String sentCommand;
+    private long sentCommandAt;
+    private static final long RESEND_AFTER_MS = 3_000;
 
     private volatile String authUuid = "";
     private volatile boolean authSent = false;
@@ -106,6 +112,9 @@ public class AssistClient implements ClientModInitializer {
                 category));
         stopKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.bzassist.stop", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_LEFT_BRACKET,
+                category));
+        commandKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+                "key.bzassist.command", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_B,
                 category));
 
         HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("bzassist", "panel"),
@@ -168,6 +177,7 @@ public class AssistClient implements ClientModInitializer {
         }
         checkVersion(client);
         remindLogin(uuid);
+        maybeConfirmAutocommand(client);
         if (authBlocked) return;
         if (config.tokenFor(uuid) != null || pendingLinkUuid != null) socket.connect();
         else STATE.status("Run /flipperx login to link this account.");
@@ -185,6 +195,7 @@ public class AssistClient implements ClientModInitializer {
         }
         while (startKey.consumeClick()) start();
         while (stopKey.consumeClick()) stop();
+        while (commandKey.consumeClick()) sendStepCommand(client);
 
         maybeOpenSummary();
         maybeReport();
@@ -225,6 +236,60 @@ public class AssistClient implements ClientModInitializer {
                     .append(Chat.button("[stop these reminders]", "/flipperx reminders off"))
                     .append("."));
         }
+    }
+
+    private void sendStepCommand(Minecraft client) {
+        if (!config.autocommand || client.player == null || GameUtil.currentScreen() != null) return;
+        AssistState.Step step = STATE.step();
+        if (!STATE.running() || !STATE.current() || !step.isCommand() || step.text().isEmpty()) return;
+        long now = System.currentTimeMillis();
+        if (step.text().equals(sentCommand) && now - sentCommandAt < RESEND_AFTER_MS) return;
+        sentCommand = step.text();
+        sentCommandAt = now;
+        client.player.connection.sendCommand(step.text());
+    }
+
+    public String autocommandKey() {
+        if (!config.autocommand || commandKey.isUnbound()) return null;
+        return commandKey.getTranslatedKeyMessage().getString();
+    }
+
+    public void autocommand(Boolean on) {
+        if (on == null) {
+            chat(config.autocommand ? "Autocommand is on." : "Autocommand is off.");
+            return;
+        }
+        if (!on) {
+            config.autocommand = false;
+            config.save();
+            chat("Autocommand is off.");
+            return;
+        }
+        if (config.autocommand) {
+            chat("Autocommand is already on.");
+            return;
+        }
+        confirmAutocommand = true;
+    }
+
+    private void maybeConfirmAutocommand(Minecraft client) {
+        if (!confirmAutocommand || GameUtil.currentScreen() != null) return;
+        confirmAutocommand = false;
+        String key = commandKey.getTranslatedKeyMessage().getString();
+        client.gui.setScreen(new ConfirmScreen(yes -> {
+            client.gui.setScreen(null);
+            if (yes) {
+                config.autocommand = true;
+                config.save();
+                chat("Autocommand is on. When the panel shows a command, press " + key + " to send it.");
+            } else {
+                chat("Autocommand stays off.");
+            }
+        }, Component.literal("Turn on autocommand?"),
+                Component.literal("Pressing " + key + " will send the command on the panel for you. "
+                        + "This is a gray area. Hypixel may count it as macroing and ban the account. "
+                        + "Are you sure?"),
+                Component.literal("Turn it on"), Component.literal("Cancel")));
     }
 
     public void loginReminders(boolean on) {
@@ -484,7 +549,16 @@ public class AssistClient implements ClientModInitializer {
                 && GameUtil.currentScreen().getFocused() instanceof EditBox) return false;
         if (startKey != null && startKey.matches(event)) { start(); return true; }
         if (stopKey != null && stopKey.matches(event)) { stop(); return true; }
+        if (commandKey != null && commandKey.matches(event)) return commandKeyInMenu();
         return false;
+    }
+
+    private boolean commandKeyInMenu() {
+        AssistState.Step step = STATE.step();
+        if (!config.autocommand || !STATE.running()
+                || !(step.isCommand() || "close".equals(step.kind()))) return false;
+        STATE.notice("Close the menu first.", 3000);
+        return true;
     }
 
     public void showSummary() {

@@ -14,6 +14,8 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import java.util.Locale;
+
 @Mixin(AbstractSignEditScreen.class)
 public abstract class SignEditScreenMixin {
     private static final int AMBER = 0xFFE8A33D;
@@ -37,20 +39,22 @@ public abstract class SignEditScreenMixin {
         String typed = lines != null && lines.length > 0 && lines[0] != null ? lines[0].trim() : "";
         int line = sign.bzassist$getLine();
         String want = step.text();
+        boolean search = !want.chars().allMatch(Character::isDigit);
+        String compared = search ? typed.toLowerCase(Locale.ROOT) : typed;
 
         int cx = graphics.guiWidth() / 2;
         int y = graphics.guiHeight() / 2 + 44;
 
-        String amount = "Amount: " + grouped(want);
-        drawScaled(graphics, amount, cx, y, AMBER, 1.5f);
+        String heading = (search ? "Search: " : "Amount: ") + grouped(want);
+        drawScaled(graphics, heading, cx, y, AMBER, 1.5f);
         y += 18;
 
         if (line != 0 && typed.isEmpty()) {
             drawCentered(graphics, "Type it on the first line of the sign", cx, y, RED);
             return;
         }
-        GhostText.Render render = GhostText.ofSign(typed, want);
-        if (typed.equals(want)) {
+        GhostText.Render render = GhostText.ofSign(compared, want);
+        if (compared.equals(want)) {
             drawCentered(graphics, want + "  done, press Enter", cx, y, GREEN);
             return;
         }

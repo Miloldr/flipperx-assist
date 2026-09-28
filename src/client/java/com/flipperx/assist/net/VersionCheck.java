@@ -10,16 +10,26 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
-import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 public final class VersionCheck {
     private static final String ENDPOINT = System.getProperty("bzassist.dev") != null
             ? "http://127.0.0.1:8000/public/assistmod/version"
             : "https://api.flipperx.digital/public/assistmod/version";
 
+    public static final String PAGE = "https://flipperx.digital/assistmod";
+
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10)).build();
+
+    public record Release(String version, String page, URI download, String sha256, long size) {
+        public boolean installable() {
+            return download != null && sha256 != null && !sha256.isEmpty();
+        }
+    }
 
     private VersionCheck() {}
 
@@ -29,20 +39,54 @@ public final class VersionCheck {
                 .orElse("");
     }
 
-    public static void fetch(Executor executor, BiConsumer<String, String> onNewer) {
+    public static CompletableFuture<Release> latest() {
         HttpRequest request = HttpRequest.newBuilder(URI.create(ENDPOINT))
                 .timeout(Duration.ofSeconds(15))
                 .header("User-Agent", "bzassist/" + current())
                 .GET().build();
-        HTTP.sendAsync(request, HttpResponse.BodyHandlers.ofString()).thenAccept(response -> {
-            if (response.statusCode() != 200) return;
-            JsonObject o = JsonParser.parseString(response.body()).getAsJsonObject();
-            if (!o.has("version") || o.get("version").isJsonNull()) return;
-            String latest = o.get("version").getAsString();
-            String url = o.has("url") && !o.get("url").isJsonNull()
-                    ? o.get("url").getAsString() : "https://flipperx.digital/assistmod";
-            if (compare(latest, current()) > 0) executor.execute(() -> onNewer.accept(latest, url));
+        return HTTP.sendAsync(request, HttpResponse.BodyHandlers.ofString()).thenApply(response -> {
+            if (response.statusCode() != 200) {
+                throw new IllegalStateException("version check answered " + response.statusCode());
+            }
+            return parse(response.body());
+        });
+    }
+
+    public static void fetch(Executor executor, Consumer<Release> onNewer) {
+        latest().thenAccept(release -> {
+            if (release != null && compare(release.version(), current()) > 0) {
+                executor.execute(() -> onNewer.accept(release));
+            }
         }).exceptionally(t -> null);
+    }
+
+    public static Release parse(String body) {
+        JsonObject o = JsonParser.parseString(body).getAsJsonObject();
+        String version = string(o, "version");
+        if (version == null) return null;
+        String page = string(o, "url");
+        long size = o.has("size") && !o.get("size").isJsonNull() ? o.get("size").getAsLong() : -1;
+        return new Release(version, page == null ? PAGE : page, sameHost(string(o, "download")),
+                string(o, "sha256"), size);
+    }
+
+    private static URI sameHost(String path) {
+        if (path == null) return null;
+        URI base = URI.create(ENDPOINT);
+        URI resolved;
+        try {
+            resolved = base.resolve(path);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+        boolean same = Objects.equals(base.getScheme(), resolved.getScheme())
+                && Objects.equals(base.getHost(), resolved.getHost())
+                && base.getPort() == resolved.getPort();
+        return same ? resolved : null;
+    }
+
+    private static String string(JsonObject o, String key) {
+        return o.has(key) && !o.get(key).isJsonNull() ? o.get(key).getAsString() : null;
     }
 
     public static int compare(String a, String b) {

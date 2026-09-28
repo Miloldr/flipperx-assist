@@ -21,6 +21,8 @@ public final class ModConfig {
     public int hudY = 8;
     public boolean loginReminders = true;
     public boolean autocommand = false;
+    public String lastVersion;
+    public String updateTried;
 
     private static ModConfig instance;
 

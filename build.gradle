@@ -83,3 +83,10 @@ tasks.register('chatCheck', JavaExec) {
     mainClass = 'ChatLinkCheck'
 }
 tasks.named('check') { dependsOn 'chatCheck' }
+
+tasks.register('updateCheck', JavaExec) {
+    dependsOn checkClasses
+    classpath = sourceSets.check.runtimeClasspath
+    mainClass = 'UpdateCheck'
+}
+tasks.named('check') { dependsOn 'updateCheck' }

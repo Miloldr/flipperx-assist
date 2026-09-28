@@ -43,6 +43,10 @@ public final class AssistCommand {
                             AssistClient.get().goal(StringArgumentType.getString(ctx, "text"));
                             return 1;
                         })))
+                .then(ClientCommands.literal("update").executes(ctx -> {
+                    AssistClient.get().update();
+                    return 1;
+                }))
                 .then(ClientCommands.literal("summary").executes(ctx -> {
                     AssistClient.get().showSummary();
                     return 1;

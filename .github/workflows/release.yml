@@ -1,0 +1,33 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency: release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+          cache: gradle
+      - run: ./gradlew build --no-daemon
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(sed -n 's/^mod_version=//p' gradle.properties)
+          if gh release view "v$version" > /dev/null 2>&1; then
+            echo "v$version is already released"
+          else
+            gh release create "v$version" "build/libs/bzassist-$version.jar" \
+              --title "Bazaar Assist $version" --target "$GITHUB_SHA" --generate-notes
+          fi

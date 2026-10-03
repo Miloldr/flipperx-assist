@@ -3,6 +3,7 @@ package com.flipperx.assist;
 import com.flipperx.assist.commands.AssistCommand;
 import com.flipperx.assist.config.ModConfig;
 import com.flipperx.assist.game.GameUtil;
+import com.flipperx.assist.game.Location;
 import com.flipperx.assist.game.ScreenReader;
 import com.flipperx.assist.hud.AssistHud;
 import com.flipperx.assist.hud.ProfitPops;
@@ -151,6 +152,7 @@ public class AssistClient implements ClientModInitializer {
     }
 
     private void onTick(Minecraft client) {
+        Location.update(client);
         if (client.player == null) {
             long now = System.currentTimeMillis();
             if (wasInWorld) leftWorldAt = now;
@@ -184,12 +186,18 @@ public class AssistClient implements ClientModInitializer {
             awaitingStep = false;
             discardStep = false;
         }
-        checkVersion(client);
-        remindLogin(uuid);
+        boolean skyBlock = Location.skyBlock();
+        if (skyBlock) {
+            checkVersion(client);
+            remindLogin(uuid);
+        }
         maybeConfirmAutocommand(client);
         if (authBlocked) return;
-        if (config.tokenFor(uuid) != null || pendingLinkUuid != null) socket.connect();
-        else STATE.status("Run /flipperx login to link this account.");
+        if (config.tokenFor(uuid) == null && pendingLinkUuid == null) {
+            STATE.status("Run /flipperx login to link this account.");
+        } else if (skyBlock || pendingLinkUuid != null) {
+            socket.connect();
+        }
         if (socket.connected()) {
             authConnection = socket.generation();
             if (pendingLinkUuid != null && !linkSent) sendLink();
@@ -202,9 +210,9 @@ public class AssistClient implements ClientModInitializer {
         if (authSent && !STATE.linked() && System.currentTimeMillis() - authAt > 15_000) {
             socket.close();
         }
-        while (startKey.consumeClick()) start();
-        while (stopKey.consumeClick()) stop();
-        while (commandKey.consumeClick()) sendStepCommand(client);
+        while (startKey.consumeClick()) if (skyBlock) start();
+        while (stopKey.consumeClick()) if (skyBlock) stop();
+        while (commandKey.consumeClick()) if (skyBlock) sendStepCommand(client);
 
         maybeOpenSummary();
         maybeReport();
@@ -593,6 +601,10 @@ public class AssistClient implements ClientModInitializer {
     }
 
     public void start() {
+        if (!Location.skyBlock()) {
+            chat("Join SkyBlock first.");
+            return;
+        }
         start(true);
     }
 
@@ -626,6 +638,7 @@ public class AssistClient implements ClientModInitializer {
     }
 
     public boolean handleKey(KeyEvent event) {
+        if (!Location.skyBlock()) return false;
         if (GameUtil.currentScreen() != null
                 && GameUtil.currentScreen().getFocused() instanceof EditBox) return false;
         if (startKey != null && startKey.matches(event)) { start(); return true; }

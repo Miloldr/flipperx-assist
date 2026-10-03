@@ -5,6 +5,7 @@ import com.flipperx.assist.AssistState;
 import com.flipperx.assist.AssistState.Step;
 import com.flipperx.assist.config.ModConfig;
 import com.flipperx.assist.game.GameUtil;
+import com.flipperx.assist.game.Location;
 import com.flipperx.assist.mixin.AbstractContainerScreenAccessor;
 
 import net.minecraft.client.Minecraft;
@@ -73,7 +74,7 @@ public final class AssistHud {
 
     public static void render(GuiGraphicsExtractor g, AssistState state) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.gui.hud.isHidden()) {
+        if (mc.gui.hud.isHidden() || !Location.skyBlock()) {
             drawnHeight = 0;
             moneyX = goalX = Float.NaN;
             return;

@@ -2,6 +2,7 @@ package com.flipperx.assist.mixin;
 
 import com.flipperx.assist.AssistClient;
 import com.flipperx.assist.AssistState.Step;
+import com.flipperx.assist.game.Location;
 import com.flipperx.assist.hud.AssistHud;
 import com.flipperx.assist.hud.GhostText;
 
@@ -29,7 +30,7 @@ public abstract class SignEditScreenMixin {
                                      CallbackInfo ci) {
         AssistHud.clearHighlight();
         AssistHud.render(graphics, AssistClient.state());
-        if (!AssistClient.state().running() || !AssistClient.state().current()) return;
+        if (!Location.skyBlock() || !AssistClient.state().running() || !AssistClient.state().current()) return;
         Step step = AssistClient.state().step();
         if (!step.isSign() || step.text().isEmpty()) return;
 

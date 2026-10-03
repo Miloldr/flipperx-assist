@@ -2,6 +2,7 @@ package com.flipperx.assist.mixin;
 
 import com.flipperx.assist.AssistClient;
 import com.flipperx.assist.AssistState.Step;
+import com.flipperx.assist.game.Location;
 import com.flipperx.assist.hud.GhostText;
 
 import net.minecraft.client.Minecraft;
@@ -23,7 +24,8 @@ public abstract class ChatScreenMixin {
     @Inject(method = "extractRenderState", at = @At("TAIL"))
     private void bzassist$drawGhost(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta,
                                     CallbackInfo ci) {
-        if (input == null || !AssistClient.state().running() || !AssistClient.state().current()) return;
+        if (input == null || !Location.skyBlock() || !AssistClient.state().running()
+                || !AssistClient.state().current()) return;
         Step step = AssistClient.state().step();
         if (!step.isCommand()) return;
 

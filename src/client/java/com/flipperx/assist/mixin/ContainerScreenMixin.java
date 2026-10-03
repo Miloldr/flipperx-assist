@@ -3,6 +3,7 @@ package com.flipperx.assist.mixin;
 import com.flipperx.assist.AssistClient;
 import com.flipperx.assist.AssistState;
 import com.flipperx.assist.AssistState.Step;
+import com.flipperx.assist.game.Location;
 import com.flipperx.assist.hud.AssistHud;
 import com.flipperx.assist.hud.ProfitPops;
 
@@ -25,7 +26,7 @@ public abstract class ContainerScreenMixin {
         Step step = state.step();
 
         boolean drawn = false;
-        if (state.running() && state.current() && step.isClick() && step.slot() >= 0) {
+        if (Location.skyBlock() && state.running() && state.current() && step.isClick() && step.slot() >= 0) {
             for (Slot slot : self.getMenu().slots) {
                 if (slot.index != step.slot()) continue;
                 int x = ((AbstractContainerScreenAccessor) self).bzassist$getLeftPos() + slot.x;

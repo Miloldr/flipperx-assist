@@ -1,6 +1,7 @@
 package com.flipperx.assist.hud;
 
 import com.flipperx.assist.game.GameUtil;
+import com.flipperx.assist.game.Location;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -87,7 +88,7 @@ public final class ProfitPops {
     }
 
     public static void render(GuiGraphicsExtractor g) {
-        if (POPS.isEmpty()) return;
+        if (POPS.isEmpty() || !Location.skyBlock()) return;
         long now = System.currentTimeMillis();
         Screen screen = GameUtil.currentScreen();
         Font font = Minecraft.getInstance().font;

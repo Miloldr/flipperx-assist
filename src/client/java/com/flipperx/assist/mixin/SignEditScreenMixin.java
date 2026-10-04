@@ -46,7 +46,7 @@ public abstract class SignEditScreenMixin {
         int cx = graphics.guiWidth() / 2;
         int y = graphics.guiHeight() / 2 + 44;
 
-        String heading = (search ? "Search: " : "Amount: ") + grouped(want);
+        String heading = (search ? "Search: " : "Amount: ") + want;
         drawScaled(graphics, heading, cx, y, AMBER, 1.5f);
         y += 18;
 
@@ -83,16 +83,5 @@ public abstract class SignEditScreenMixin {
         g.pose().scale(scale, scale);
         g.text(mc.font, text, 0, 0, color, true);
         g.pose().popMatrix();
-    }
-
-    private static String grouped(String digits) {
-        if (!digits.chars().allMatch(Character::isDigit)) return digits;
-        StringBuilder out = new StringBuilder();
-        int n = digits.length();
-        for (int i = 0; i < n; i++) {
-            if (i > 0 && (n - i) % 3 == 0) out.append(',');
-            out.append(digits.charAt(i));
-        }
-        return out.toString();
     }
 }

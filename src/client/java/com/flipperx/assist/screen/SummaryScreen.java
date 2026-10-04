@@ -26,6 +26,8 @@ public final class SummaryScreen extends Screen {
     private static final int BIG = 3;
     private static final int CHART_H = 70;
     private static final int CHART_MIN_H = 40;
+    private static final int FOOT_GAP = 9;
+    private static final int BUTTON_H = 20;
 
     private static final int CARD = 0x121212;
     private static final int TRACK = 0x2A2A2A;
@@ -124,7 +126,7 @@ public final class SummaryScreen extends Screen {
 
         if (s.best() != null) {
             Summary.Best b = s.best();
-            int bx = word(g, f, "Best flip", left, y + 4, AssistHud.DIM) + 8;
+            int bx = word(g, f, "Best item", left, y + 4, AssistHud.DIM) + 8;
             Identifier icon = IconCache.get(b.itemId(), b.icon());
             if (icon != null) {
                 g.blit(RenderPipelines.GUI_TEXTURED, icon, bx, y, 0f, 0f, 16, 16, 16, 16,
@@ -164,22 +166,24 @@ public final class SummaryScreen extends Screen {
         }
         if (!held.isEmpty()) y += 4;
 
+        y += 3;
         g.fill(left, y, right, y + 1, color(AssistHud.BORDER));
-        y += 7;
+        y += 1 + FOOT_GAP;
+        int textY = y + (BUTTON_H - 7) / 2;
         String close = "Close";
-        closeX0 = right - f.width(close) - 16; closeX1 = right; closeY0 = y - 3; closeY1 = y + 12;
-        button(g, f, close, closeX0, closeY0, closeX1, closeY1, y + 1, mouseX, mouseY);
+        closeX0 = right - f.width(close) - 20; closeX1 = right; closeY0 = y; closeY1 = y + BUTTON_H;
+        button(g, f, close, closeX0, closeY0, closeX1, closeY1, textY, mouseX, mouseY);
         int buttonsLeft = closeX0;
         if (s.shareUrl() != null) {
             String share = System.currentTimeMillis() - copiedAt < COPIED_MS ? "Copied" : "Share";
-            shareX1 = closeX0 - 4; shareX0 = shareX1 - Math.max(f.width("Share"), f.width("Copied")) - 16;
+            shareX1 = closeX0 - 4; shareX0 = shareX1 - Math.max(f.width("Share"), f.width("Copied")) - 20;
             shareY0 = closeY0; shareY1 = closeY1;
-            button(g, f, share, shareX0, shareY0, shareX1, shareY1, y + 1, mouseX, mouseY);
+            button(g, f, share, shareX0, shareY0, shareX1, shareY1, textY, mouseX, mouseY);
             buttonsLeft = shareX0;
         }
         for (String hint : HINTS) {
             if (left + f.width(hint) + 6 <= buttonsLeft) {
-                g.text(f, hint, left, y + 2, color(AssistHud.DIM), false);
+                g.text(f, hint, left, textY, color(AssistHud.DIM), false);
                 break;
             }
         }
@@ -204,7 +208,7 @@ public final class SummaryScreen extends Screen {
         if (s.goal() != null) h += LINE + 3 + 8;
         h += heldLines * LINE;
         if (heldLines > 0) h += 4;
-        h += 7 + 12;
+        h += 3 + 1 + FOOT_GAP + BUTTON_H;
         return h;
     }
 
@@ -247,15 +251,6 @@ public final class SummaryScreen extends Screen {
             }
         }
         g.disableScissor();
-
-        Summary.Best b = s.best();
-        if (b != null) {
-            int bx = x(b.x(), total, plotL, plotR), by = y(b.cum(), plotT, plotB);
-            if (bx <= clipR) {
-                g.fill(bx - 2, by - 2, bx + 3, by + 3, color(CARD));
-                g.fill(bx - 1, by - 1, bx + 2, by + 2, color(AssistHud.AMBER));
-            }
-        }
 
         if (mouseX >= plotL && mouseX <= plotR && mouseY >= plotT - 4 && mouseY <= plotB + 2 && reveal >= 1f) {
             double at = (double) (mouseX - plotL) / (plotR - plotL) * total;

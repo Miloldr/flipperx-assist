@@ -6,8 +6,7 @@ import com.google.gson.JsonObject;
 
 public record Summary(double profit, Double perHour, long runSeconds, int sales, float[][] series,
                       Best best, String held, Goal goal, String shareId, String shareUrl) {
-    public record Best(String itemId, String itemName, String icon, int quantity, double profit,
-                       float x, double cum) {}
+    public record Best(String itemId, String itemName, String icon, int quantity, double profit) {}
 
     public record Goal(String label, double target, double before, double after) {}
 
@@ -22,8 +21,7 @@ public record Summary(double profit, Double perHour, long runSeconds, int sales,
         if (o.has("best") && o.get("best").isJsonObject()) {
             JsonObject b = o.getAsJsonObject("best");
             best = new Best(str(b, "item_id"), str(b, "item_name"), str(b, "icon"),
-                    b.has("quantity") ? b.get("quantity").getAsInt() : 0, num(b, "profit"),
-                    (float) num(b, "x"), num(b, "cum"));
+                    b.has("quantity") ? b.get("quantity").getAsInt() : 0, num(b, "profit"));
         }
         String held = null;
         if (o.has("held") && o.get("held").isJsonObject()) held = str(o.getAsJsonObject("held"), "text");

@@ -32,6 +32,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.gui.screens.inventory.AbstractSignEditScreen;
 import net.minecraft.client.input.KeyEvent;
+import net.minecraft.network.Connection;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.Identifier;
@@ -84,7 +85,12 @@ public class AssistClient implements ClientModInitializer {
     private boolean forceReport;
     private boolean discardStep;
     private long authAt;
-    private boolean announcedReady;
+    private boolean justLinked;
+    private Connection gameConnection;
+    private boolean greeted;
+    private long greetAt;
+    private static final long GREET_AFTER_MS = 3_000;
+    private static final long GREET_WAIT_MS = 10_000;
     private Summary lastSummary;
     private long summaryOpenUntil;
     private static final long SUMMARY_WAIT_MS = 60_000;
@@ -170,6 +176,12 @@ public class AssistClient implements ClientModInitializer {
         }
         wasInWorld = true;
         leftWorldAt = 0;
+        Connection connection = client.player.connection.getConnection();
+        if (connection != gameConnection) {
+            gameConnection = connection;
+            greeted = false;
+            greetAt = 0;
+        }
         String uuid = currentUuid();
         if (!authUuid.isEmpty() && !uuid.equals(authUuid)) {
             socket.close();
@@ -190,6 +202,7 @@ public class AssistClient implements ClientModInitializer {
         if (skyBlock) {
             checkVersion(client);
             remindLogin(uuid);
+            greet(uuid);
         }
         maybeConfirmAutocommand(client);
         if (authBlocked) return;
@@ -318,13 +331,42 @@ public class AssistClient implements ClientModInitializer {
         if (nextReminderAt == 0) {
             nextReminderAt = now + FIRST_REMINDER_MS;
         } else if (now >= nextReminderAt) {
-            nextReminderAt = now + REMINDER_EVERY_MS;
-            chat(Component.literal("You are not logged in yet. ")
-                    .append(Chat.button("[Log in]", "/flipperx login"))
-                    .append(" to start flipping, or ")
-                    .append(Chat.button("[stop these reminders]", "/flipperx reminders off"))
-                    .append("."));
+            sendLoginReminder(now);
         }
+    }
+
+    private void sendLoginReminder(long now) {
+        nextReminderAt = now + REMINDER_EVERY_MS;
+        chat(Component.literal("You are not logged in yet. ")
+                .append(Chat.button("[Log in]", "/flipperx login"))
+                .append(" to start flipping, or ")
+                .append(Chat.button("[stop these reminders]", "/flipperx reminders off"))
+                .append("."));
+    }
+
+    private void greet(String uuid) {
+        if (greeted) return;
+        long now = System.currentTimeMillis();
+        if (greetAt == 0) greetAt = now + GREET_AFTER_MS;
+        if (now < greetAt) return;
+        boolean token = config.tokenFor(uuid) != null;
+        if (token && !STATE.linked() && !authBlocked && now < greetAt + GREET_WAIT_MS) return;
+        greeted = true;
+        if (STATE.running() || STATE.resumePending() || pendingLinkUuid != null || authBlocked) return;
+        if (token) {
+            chat(startLine(STATE.linked() ? "Ready. " : ""));
+        } else if (config.loginReminders) {
+            sendLoginReminder(now);
+        }
+    }
+
+    private String startLine(String before) {
+        return "§a" + before + "Press §e" + startKey.getTranslatedKeyMessage().getString()
+                + "§a to start, §e" + stopKey.getTranslatedKeyMessage().getString() + "§a to stop.";
+    }
+
+    private String startAgain() {
+        return "Press " + startKey.getTranslatedKeyMessage().getString() + " to start again.";
     }
 
     private void sendStepCommand(Minecraft client) {
@@ -470,6 +512,7 @@ public class AssistClient implements ClientModInitializer {
                 config.setToken(pendingLinkUuid, msg.get("session_token").getAsString());
                 pendingLinkUuid = null;
                 linkSent = false;
+                justLinked = true;
                 chat("§aLinked. Authenticating...");
                 authSent = false;
             }
@@ -490,12 +533,12 @@ public class AssistClient implements ClientModInitializer {
                     chat("§aReconnected. Assist re-reads your orders first, then carries on.");
                 } else {
                     STATE.status("Ready. Press " + startKey.getTranslatedKeyMessage().getString() + " to start.");
-                    if (!announcedReady) {
-                        chat("§aReady. Press §e" + startKey.getTranslatedKeyMessage().getString()
-                                + "§a to start, §e" + stopKey.getTranslatedKeyMessage().getString() + "§a to stop.");
+                    if (justLinked) {
+                        chat(startLine("Ready. "));
+                        greeted = true;
                     }
-                    announcedReady = true;
                 }
+                justLinked = false;
             }
             case "auth_err" -> {
                 authSent = false;
@@ -515,7 +558,15 @@ public class AssistClient implements ClientModInitializer {
                     forceReport = true;
                     return;
                 }
-                if (msg.has("hud") && msg.get("hud").isJsonObject()) STATE.hud(msg.getAsJsonObject("hud"));
+                if (msg.has("hud") && msg.get("hud").isJsonObject()) {
+                    JsonObject hud = msg.getAsJsonObject("hud");
+                    boolean wasRunning = STATE.running();
+                    STATE.hud(hud);
+                    if (wasRunning && !STATE.running()
+                            && hud.has("stopped_reason") && !hud.get("stopped_reason").isJsonNull()) {
+                        chat("§e" + STATE.status() + " " + startAgain());
+                    }
+                }
                 AssistState.Step incoming = AssistState.Step.from(msg);
                 String targetName = reportedSlotNames.get(incoming.slot());
                 if (screenContext() != reportedContext || !targetMatches(incoming, targetName)) {
@@ -567,7 +618,7 @@ public class AssistClient implements ClientModInitializer {
         STATE.reset();
         authSent = false;
         authBlocked = false;
-        announcedReady = false;
+        justLinked = false;
         pendingLinkUuid = currentUuid();
         authUuid = pendingLinkUuid;
         linkSent = false;
@@ -595,7 +646,7 @@ public class AssistClient implements ClientModInitializer {
         STATE.reset();
         STATE.status("Run /flipperx login to link this account.");
         authSent = false;
-        announcedReady = false;
+        justLinked = false;
         STATE.running(false);
         chat("Forgot this account's link.");
     }
@@ -634,7 +685,7 @@ public class AssistClient implements ClientModInitializer {
         STATE.status("Paused. Press " + startKey.getTranslatedKeyMessage().getString() + " to start.");
         forceReport = true;
         discardStep = awaitingStep;
-        chat("Off.");
+        chat("Off. " + startAgain());
     }
 
     public boolean handleKey(KeyEvent event) {

@@ -48,7 +48,6 @@ public final class AssistHud {
     private static final float COUNT_MS = 650f;
     private static final float GLOW_MS = 1100f;
     private static final float DELTA_MS = 2200f;
-    private static final long IDLE_SHOW_MS = 20_000;
 
     private static boolean dragging = false;
     private static int dragDx, dragDy;
@@ -84,7 +83,7 @@ public final class AssistHud {
         lastFrameNs = nowNs;
         long now = System.currentTimeMillis();
         boolean running = state.running();
-        if (!running && !showWhileOff(state, now)) {
+        if (!running && !state.resumePending()) {
             drawnHeight = 0;
             moneyX = goalX = Float.NaN;
             return;
@@ -259,14 +258,6 @@ public final class AssistHud {
         long now = System.currentTimeMillis();
         delta = now - deltaAt < DELTA_MS * 0.7f ? delta + profit : profit;
         deltaAt = now;
-    }
-
-    private static boolean showWhileOff(AssistState state, long now) {
-        if (now - state.statusSince() < IDLE_SHOW_MS || state.resumePending()) return true;
-        if (state.notice() != null) return true;
-        Screen screen = GameUtil.currentScreen();
-        return screen instanceof AbstractContainerScreen<?>
-                && GameUtil.screenTitle().toLowerCase().contains("bazaar");
     }
 
     private static float noticeAlpha(AssistState state, long now) {

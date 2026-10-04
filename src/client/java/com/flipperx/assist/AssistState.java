@@ -84,14 +84,9 @@ public final class AssistState {
     private static final long RESUME_WINDOW_MS = 180_000;
 
     private volatile String status = "Run /flipperx login to link this account.";
-    private volatile long statusSince = System.currentTimeMillis();
     private volatile long resumeUntil = 0;
     public String status() { return status; }
-    public void status(String value) {
-        if (!value.equals(status)) statusSince = System.currentTimeMillis();
-        status = value;
-    }
-    public long statusSince() { return statusSince; }
+    public void status(String value) { status = value; }
     public void disconnected() {
         if (running) resumeUntil = System.currentTimeMillis() + RESUME_WINDOW_MS;
         linked = false;

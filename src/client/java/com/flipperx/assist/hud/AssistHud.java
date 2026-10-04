@@ -329,7 +329,7 @@ public final class AssistHud {
                 yield "Type /" + step.text() + (key == null ? "" : " or press " + key);
             }
             case "click" -> step.label();
-            case "sign" -> "Type " + grouped(step.text()) + " on the sign";
+            case "sign" -> "Type " + step.text() + " on the sign";
             case "close" -> step.label();
             case "wait" -> step.label().isEmpty() ? "One moment" : step.label();
             case "unreachable", "gated" -> step.label();
@@ -346,17 +346,6 @@ public final class AssistHud {
             return step.label().toLowerCase().contains(item.toLowerCase()) ? null : item;
         }
         return null;
-    }
-
-    private static String grouped(String digits) {
-        if (digits.isEmpty() || !digits.chars().allMatch(Character::isDigit)) return digits;
-        StringBuilder out = new StringBuilder();
-        int n = digits.length();
-        for (int i = 0; i < n; i++) {
-            if (i > 0 && (n - i) % 3 == 0) out.append(',');
-            out.append(digits.charAt(i));
-        }
-        return out.toString();
     }
 
     public static String compact(double n) {

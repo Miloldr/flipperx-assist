@@ -67,6 +67,7 @@ public final class ScreenReader {
             s.addProperty("name", GameUtil.rawName(st));
             s.addProperty("count", st.getCount());
             s.add("lore", toArray(GameUtil.lore(st)));
+            GameUtil.describe(s, st);
             arr.add(s);
         }
         return arr;
@@ -85,6 +86,7 @@ public final class ScreenReader {
             o.addProperty("slot", i);
             o.addProperty("name", name);
             o.addProperty("count", st.getCount());
+            GameUtil.describe(o, st);
             arr.add(o);
         }
         return arr;

@@ -49,6 +49,7 @@ public class AssistClient implements ClientModInitializer {
     private static final String ENDPOINT = System.getProperty("bzassist.dev") != null
             ? "ws://127.0.0.1:8000/ws/assist"
             : "wss://bot.flipperx.digital/ws/assist";
+    private static final String DISCORD = "https://flipperx.digital/invite";
 
     private volatile long tickEveryMs = 2000;
 
@@ -535,6 +536,7 @@ public class AssistClient implements ClientModInitializer {
                     STATE.status("Ready. Press " + startKey.getTranslatedKeyMessage().getString() + " to start.");
                     if (justLinked) {
                         chat(startLine("Ready. "));
+                        chat(Component.literal("Questions? Ask in the ").append(Chat.link("Discord", DISCORD)).append("."));
                         greeted = true;
                     }
                 }
@@ -750,6 +752,11 @@ public class AssistClient implements ClientModInitializer {
         chat("§e/flipperx update §7download the latest version");
         chat("§e/flipperx stop §7or §e[ §7pause   §e/flipperx logout §7unlink");
         chat("§e/flipperx reminders off §7no login reminders while logged out");
+        chat("§e/flipperx discord §7questions and bug reports");
+    }
+
+    public void discord() {
+        chat(Component.literal("Discord: ").append(Chat.link(Chat.shortUrl(DISCORD), DISCORD)));
     }
 
     private static void chat(String text) {

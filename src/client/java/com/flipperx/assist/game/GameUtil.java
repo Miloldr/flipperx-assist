@@ -1,15 +1,24 @@
 package com.flipperx.assist.game;
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.mojang.authlib.properties.Property;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.ItemLore;
+import net.minecraft.world.item.component.ResolvableProfile;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
@@ -67,6 +76,41 @@ public final class GameUtil {
         if (lore == null) return out;
         for (Component line : lore.lines()) out.add(line.getString());
         return out;
+    }
+
+    public static String itemType(ItemStack stack) {
+        return BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
+    }
+
+    public static String itemModel(ItemStack stack) {
+        Identifier model = stack.get(DataComponents.ITEM_MODEL);
+        if (model == null) return null;
+        String m = model.toString();
+        return m.equals(itemType(stack)) ? null : m;
+    }
+
+    public static String skin(ItemStack stack) {
+        ResolvableProfile profile = stack.get(DataComponents.PROFILE);
+        if (profile == null) return null;
+        for (Property p : profile.partialProfile().properties().get("textures")) {
+            try {
+                String json = new String(Base64.getMimeDecoder().decode(p.value()), StandardCharsets.UTF_8);
+                JsonObject textures = JsonParser.parseString(json).getAsJsonObject().getAsJsonObject("textures");
+                String url = textures.getAsJsonObject("SKIN").get("url").getAsString();
+                return url.substring(url.lastIndexOf('/') + 1);
+            } catch (RuntimeException e) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    public static void describe(JsonObject o, ItemStack stack) {
+        o.addProperty("type", itemType(stack));
+        String model = itemModel(stack);
+        if (model != null) o.addProperty("model", model);
+        String skin = skin(stack);
+        if (skin != null) o.addProperty("skin", skin);
     }
 
     public static String itemName(ItemStack st) {

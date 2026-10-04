@@ -522,6 +522,7 @@ public class AssistClient implements ClientModInitializer {
                 STATE.linked(true);
                 forceReport = true;
                 authUuid = currentUuid();
+                if (msg.has("deflate") && msg.get("deflate").getAsBoolean()) socket.deflate();
                 if (msg.has("idle_tick_ms")) tickEveryMs = Math.max(250, Math.min(10_000, msg.get("idle_tick_ms").getAsLong()));
                 boolean running = msg.has("running") && msg.get("running").getAsBoolean();
                 boolean resume = STATE.takeResume();

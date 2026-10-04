@@ -3,14 +3,18 @@ package com.flipperx.assist.net;
 import com.flipperx.assist.AssistState;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
+import java.util.zip.Deflater;
 
 public final class AssistSocket {
     private static final Gson GSON = new Gson();
@@ -26,6 +30,7 @@ public final class AssistSocket {
     private long retryAt;
     private long backoffMs = 1000;
     private CompletableFuture<?> sends = CompletableFuture.completedFuture(null);
+    private Deflater deflater;
 
     public AssistSocket(URI endpoint, AssistState state, Executor executor,
                         Consumer<JsonObject> onMessage) {
@@ -57,11 +62,37 @@ public final class AssistSocket {
         WebSocket target = ws;
         long attempt = generation;
         String json = GSON.toJson(payload);
-        sends = sends.thenCompose(ignored -> target.sendText(json, true));
+        if (deflater != null) {
+            ByteBuffer frame = compress(json);
+            sends = sends.thenCompose(ignored -> target.sendBinary(frame, true));
+        } else {
+            sends = sends.thenCompose(ignored -> target.sendText(json, true));
+        }
         sends.whenComplete((ignored, error) -> {
             if (error != null) dropped(attempt);
         });
         return true;
+    }
+
+    public synchronized void deflate() {
+        if (deflater == null && connected()) deflater = new Deflater(Deflater.DEFAULT_COMPRESSION, true);
+    }
+
+    private ByteBuffer compress(String json) {
+        deflater.setInput(json.getBytes(StandardCharsets.UTF_8));
+        ByteArrayOutputStream out = new ByteArrayOutputStream(Math.max(64, json.length() / 4));
+        byte[] buf = new byte[8192];
+        int n;
+        do {
+            n = deflater.deflate(buf, 0, buf.length, Deflater.SYNC_FLUSH);
+            out.write(buf, 0, n);
+        } while (n == buf.length);
+        return ByteBuffer.wrap(out.toByteArray());
+    }
+
+    private void endDeflater() {
+        if (deflater != null) deflater.end();
+        deflater = null;
     }
 
     public synchronized void close() {
@@ -73,6 +104,7 @@ public final class AssistSocket {
         backoffMs = 1000;
         state.disconnected();
         sends = CompletableFuture.completedFuture(null);
+        endDeflater();
         if (old != null) old.abort();
     }
 
@@ -86,6 +118,7 @@ public final class AssistSocket {
         retryAt = System.currentTimeMillis() + backoffMs;
         backoffMs = Math.min(backoffMs * 2, 30_000);
         sends = CompletableFuture.completedFuture(null);
+        endDeflater();
         if (old != null) old.abort();
     }
 
@@ -102,6 +135,7 @@ public final class AssistSocket {
                 connecting = false;
                 backoffMs = 1000;
                 sends = CompletableFuture.completedFuture(null);
+                endDeflater();
             }
             socket.request(1);
         }

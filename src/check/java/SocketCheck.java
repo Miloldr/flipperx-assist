@@ -1,6 +1,7 @@
 import com.flipperx.assist.AssistState;
 import com.flipperx.assist.net.AssistSocket;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
@@ -9,6 +10,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
+import java.util.zip.Inflater;
 
 public class SocketCheck {
     static void check(boolean ok, String message) {
@@ -54,6 +56,35 @@ public class SocketCheck {
             until(() -> callbacks.size() == 1);
             callbacks.remove().run();
             check(replies.get() == 1, "Replacement socket cannot deliver messages");
+            int textFrames = peer.frames.size();
+            socket.deflate();
+            List<JsonObject> sent = new ArrayList<>();
+            for (int i = 0; i < 40; i++) {
+                JsonObject tick = new JsonObject();
+                tick.addProperty("n", i);
+                tick.addProperty("lore", "Price per unit: 1,234.5 coins ".repeat(1 + i % 7 * 300));
+                sent.add(tick);
+                check(socket.send(tick), "Compressed send rejected");
+            }
+            until(() -> peer.binary.size() == 40 && callbacks.size() == 40);
+            callbacks.clear();
+            check(peer.frames.size() == textFrames, "A compressed message also went out as text");
+            Inflater inflater = new Inflater(true);
+            long wire = 0, plain = 0;
+            for (int i = 0; i < 40; i++) {
+                byte[] frame = peer.binary.get(i);
+                inflater.setInput(frame);
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = inflater.inflate(buf)) > 0) out.write(buf, 0, n);
+                String json = out.toString(StandardCharsets.UTF_8);
+                check(JsonParser.parseString(json).equals(sent.get(i)), "Compressed message " + i + " did not inflate to what was sent");
+                wire += frame.length;
+                plain += json.length();
+            }
+            inflater.end();
+            check(wire * 20 < plain, "Compression saved too little: " + wire + " of " + plain + " bytes");
             state.linked(true); state.running(true);
             peer.latest.close();
             until(() -> !socket.connected());
@@ -63,6 +94,12 @@ public class SocketCheck {
             Thread.sleep(100);
             check(peer.connections.get() == connections, "Tick polling bypassed reconnect backoff");
             until(() -> { socket.connect(); return socket.connected(); });
+            int before = peer.frames.size();
+            JsonObject after = new JsonObject(); after.addProperty("after", true);
+            check(socket.send(after), "Send after reconnect rejected");
+            until(() -> peer.frames.size() == before + 1);
+            check(peer.frames.get(before).equals("{\"after\":true}") && peer.binary.size() == 40,
+                    "A new connection kept compressing before the server offered it");
             socket.close();
         }
         AssistState state = new AssistState();
@@ -89,13 +126,14 @@ public class SocketCheck {
         check(state.previous() == click, "The replaced step was not kept for the cross-fade");
         state.disconnected();
         check(state.step() == AssistState.Step.NONE && !state.current(), "Disconnect retained actionable guidance");
-        System.out.println("Socket/state checks passed: single connection, ordered sends, stale callbacks, reconnect backoff, stop/reset.");
+        System.out.println("Socket/state checks passed: single connection, ordered sends, compressed sends, stale callbacks, reconnect backoff, stop/reset.");
     }
 
     static final class Peer implements AutoCloseable {
         final ServerSocket server = new ServerSocket(0, 10, InetAddress.getLoopbackAddress());
         final AtomicInteger connections = new AtomicInteger();
         final List<String> frames = new CopyOnWriteArrayList<>();
+        final List<byte[]> binary = new CopyOnWriteArrayList<>();
         volatile Socket latest;
         Peer() throws IOException {
             Thread.ofVirtual().start(() -> {
@@ -131,7 +169,8 @@ public class SocketCheck {
                     byte[] mask = in.readNBytes(4), body = in.readNBytes(len);
                     for (int i = 0; i < body.length; i++) body[i] ^= mask[i % 4];
                     if ((op & 15) == 8) return;
-                    frames.add(new String(body, StandardCharsets.UTF_8));
+                    if ((op & 15) == 2) binary.add(body);
+                    else frames.add(new String(body, StandardCharsets.UTF_8));
                     byte[] reply = "{\"type\":\"test\"}".getBytes(StandardCharsets.UTF_8);
                     out.write(0x81); out.write(reply.length); out.write(reply); out.flush();
                 }

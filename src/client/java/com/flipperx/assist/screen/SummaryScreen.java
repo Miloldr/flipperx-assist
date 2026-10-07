@@ -2,7 +2,7 @@ package com.flipperx.assist.screen;
 
 import com.flipperx.assist.AssistClient;
 import com.flipperx.assist.hud.AssistHud;
-import com.flipperx.assist.hud.IconCache;
+import com.flipperx.assist.hud.ItemIcon;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
@@ -12,9 +12,7 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
-import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
 import net.minecraft.util.FormattedCharSequence;
 
 import java.util.List;
@@ -127,10 +125,7 @@ public final class SummaryScreen extends Screen {
         if (s.best() != null) {
             Summary.Best b = s.best();
             int bx = word(g, f, "Best item", left, y + 4, AssistHud.DIM) + 8;
-            Identifier icon = IconCache.get(b.itemId(), b.icon());
-            if (icon != null) {
-                g.blit(RenderPipelines.GUI_TEXTURED, icon, bx, y, 0f, 0f, 16, 16, 16, 16,
-                        AssistHud.argb(0xFFFFFF, a));
+            if (ItemIcon.draw(g, b.look(), b.itemId(), b.icon(), bx, y, AssistHud.argb(0xFFFFFF, a))) {
                 bx += 20;
             }
             bx = word(g, f, b.itemName() == null ? "" : b.itemName(), bx, y + 4, AssistHud.TEXT);

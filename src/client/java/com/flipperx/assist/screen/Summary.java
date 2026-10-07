@@ -1,12 +1,14 @@
 package com.flipperx.assist.screen;
 
+import com.flipperx.assist.hud.ItemIcon;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 public record Summary(double profit, Double perHour, long runSeconds, int sales, float[][] series,
                       Best best, String held, Goal goal, String shareId, String shareUrl) {
-    public record Best(String itemId, String itemName, String icon, int quantity, double profit) {}
+    public record Best(String itemId, String itemName, String icon, ItemIcon.Look look, int quantity,
+                       double profit) {}
 
     public record Goal(String label, double target, double before, double after) {}
 
@@ -21,6 +23,7 @@ public record Summary(double profit, Double perHour, long runSeconds, int sales,
         if (o.has("best") && o.get("best").isJsonObject()) {
             JsonObject b = o.getAsJsonObject("best");
             best = new Best(str(b, "item_id"), str(b, "item_name"), str(b, "icon"),
+                    ItemIcon.Look.from(b.get("look")),
                     b.has("quantity") ? b.get("quantity").getAsInt() : 0, num(b, "profit"));
         }
         String held = null;

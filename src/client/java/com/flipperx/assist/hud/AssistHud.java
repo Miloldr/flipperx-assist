@@ -13,9 +13,7 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
-import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
 import net.minecraft.util.FormattedCharSequence;
 
 import java.util.ArrayList;
@@ -98,7 +96,6 @@ public final class AssistHud {
         String detail = running ? detail(step) : null;
         String hint = running ? step.hint() : state.status();
         boolean iconSpace = running && step.itemId() != null;
-        Identifier icon = running ? IconCache.get(step.itemId(), step.icon()) : null;
 
         float age = now - state.stepSince();
         float fade = running ? ease(Math.min(1f, age / FADE_MS)) : 1f;
@@ -152,9 +149,8 @@ public final class AssistHud {
         g.fill(x + width - 1, y, x + width, y + height, border);
 
         g.enableScissor(x, y, x + width, y + height);
-        if (icon != null) {
-            g.blit(RenderPipelines.GUI_TEXTURED, icon, x + PAD, y + PAD, 0f, 0f, 16, 16, 16, 16,
-                   argb(0xFFFFFF, dim));
+        if (iconSpace) {
+            ItemIcon.draw(g, step.look(), step.itemId(), step.icon(), x + PAD, y + PAD, argb(0xFFFFFF, dim));
         }
         int textX = x + PAD + (iconSpace ? 20 : 0);
         int cursor = y + PAD;

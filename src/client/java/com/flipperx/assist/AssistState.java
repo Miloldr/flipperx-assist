@@ -1,12 +1,14 @@
 package com.flipperx.assist;
 
+import com.flipperx.assist.hud.ItemIcon;
 import com.google.gson.JsonObject;
 
 public final class AssistState {
     public record Step(String kind, String text, int slot, String click,
-                       String label, String hint, String itemId, String itemName, String icon) {
+                       String label, String hint, String itemId, String itemName, String icon,
+                       ItemIcon.Look look) {
         public static final Step NONE =
-                new Step("wait", "", -1, "left", "", "", null, null, null);
+                new Step("wait", "", -1, "left", "", "", null, null, null, null);
 
         public static Step from(JsonObject o) {
             return new Step(
@@ -18,7 +20,8 @@ public final class AssistState {
                     str(o, "hint", ""),
                     str(o, "item_id", null),
                     str(o, "item_name", null),
-                    str(o, "icon", null));
+                    str(o, "icon", null),
+                    ItemIcon.Look.from(o.get("look")));
         }
 
         private static String str(JsonObject o, String key, String fallback) {

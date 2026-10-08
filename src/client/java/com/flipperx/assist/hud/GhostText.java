@@ -11,19 +11,17 @@ public final class GhostText {
     }
 
     public static Render of(String typed, String target) {
-        if (target == null || target.isEmpty() || typed == null) return Render.NONE;
-        String want = "/" + target;
-
-        int offset = typed.startsWith("/") ? 1 : 0;
-        int shared = offset + commonPrefix(typed.substring(offset), target);
-
-        if (shared <= offset && !typed.isEmpty() && typed.length() > offset) return Render.NONE;
-        if (typed.isEmpty()) return Render.NONE;
-
+        if (!owns(typed, target)) return Render.NONE;
+        int shared = 1 + commonPrefix(typed.substring(1), target);
         if (shared == typed.length()) {
-            return new Render(want.substring(shared), -1);
+            return new Render(target.substring(shared - 1), -1);
         }
         return new Render("", shared);
+    }
+
+    public static boolean owns(String typed, String target) {
+        if (target == null || target.isEmpty() || typed == null || !typed.startsWith("/")) return false;
+        return typed.length() == 1 || typed.charAt(1) == target.charAt(0);
     }
 
     private static int commonPrefix(String a, String b) {

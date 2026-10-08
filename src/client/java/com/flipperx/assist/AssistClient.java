@@ -7,6 +7,7 @@ import com.flipperx.assist.game.Location;
 import com.flipperx.assist.game.ScreenReader;
 import com.flipperx.assist.hud.AssistHud;
 import com.flipperx.assist.hud.ProfitPops;
+import com.flipperx.assist.mixin.SignEditScreenAccessor;
 import com.flipperx.assist.net.AssistSocket;
 import com.flipperx.assist.net.VersionCheck;
 import com.flipperx.assist.screen.Summary;
@@ -41,6 +42,7 @@ import org.lwjgl.glfw.GLFW;
 
 import java.net.URI;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import net.minecraft.client.gui.screens.ChatScreen;
@@ -62,7 +64,8 @@ public class AssistClient implements ClientModInitializer {
     private KeyMapping startKey;
     private KeyMapping stopKey;
     private KeyMapping commandKey;
-    private boolean confirmAutocommand;
+    private ConfirmScreen pendingConfirm;
+    private int filledSign;
     private String sentCommand;
     private long sentCommandAt;
     private static final long RESEND_AFTER_MS = 3_000;
@@ -205,7 +208,7 @@ public class AssistClient implements ClientModInitializer {
             remindLogin(uuid);
             greet(uuid);
         }
-        maybeConfirmAutocommand(client);
+        maybeConfirm(client);
         if (authBlocked) return;
         if (config.tokenFor(uuid) == null && pendingLinkUuid == null) {
             STATE.status("Run /flipperx login to link this account.");
@@ -227,6 +230,7 @@ public class AssistClient implements ClientModInitializer {
         while (startKey.consumeClick()) if (skyBlock) start();
         while (stopKey.consumeClick()) if (skyBlock) stop();
         while (commandKey.consumeClick()) if (skyBlock) sendStepCommand(client);
+        if (skyBlock) fillSign();
 
         maybeOpenSummary();
         maybeReport();
@@ -401,27 +405,75 @@ public class AssistClient implements ClientModInitializer {
             chat("Autocommand is already on.");
             return;
         }
-        confirmAutocommand = true;
+        String key = commandKey.getTranslatedKeyMessage().getString();
+        pendingConfirm = confirmTurnOn("Autocommand",
+                "Pressing " + key + " will send the command on the panel for you.",
+                "Autocommand is on. When the panel shows a command, press " + key + " to send it.",
+                () -> config.autocommand = true);
     }
 
-    private void maybeConfirmAutocommand(Minecraft client) {
-        if (!confirmAutocommand || GameUtil.currentScreen() != null) return;
-        confirmAutocommand = false;
-        String key = commandKey.getTranslatedKeyMessage().getString();
-        client.gui.setScreen(new ConfirmScreen(yes -> {
-            client.gui.setScreen(null);
+    public void autosign(Boolean on) {
+        if (on == null) {
+            chat(config.autosign ? "Autosign is on." : "Autosign is off.");
+            return;
+        }
+        if (!on) {
+            config.autosign = false;
+            config.save();
+            chat("Autosign is off.");
+            return;
+        }
+        if (config.autosign) {
+            chat("Autosign is already on.");
+            return;
+        }
+        pendingConfirm = confirmTurnOn("Autosign",
+                "When a sign asks for an amount, the amount on the panel will be typed in for you. "
+                        + "You still close the sign yourself.",
+                "Autosign is on. When a sign asks for an amount, it gets typed in for you. "
+                        + "You still close the sign yourself.",
+                () -> config.autosign = true);
+    }
+
+    private ConfirmScreen confirmTurnOn(String name, String what, String onLine, Runnable enable) {
+        return new ConfirmScreen(yes -> {
+            Minecraft.getInstance().gui.setScreen(null);
             if (yes) {
-                config.autocommand = true;
+                enable.run();
                 config.save();
-                chat("Autocommand is on. When the panel shows a command, press " + key + " to send it.");
+                chat(onLine);
             } else {
-                chat("Autocommand stays off.");
+                chat(name + " stays off.");
             }
-        }, Component.literal("Turn on autocommand?"),
-                Component.literal("Pressing " + key + " will send the command on the panel for you. "
-                        + "This is a gray area. Hypixel may count it as macroing and ban the account. "
-                        + "Are you sure?"),
-                Component.literal("Turn it on"), Component.literal("Cancel")));
+        }, Component.literal("Turn on " + name.toLowerCase(Locale.ROOT) + "?"),
+                Component.literal(what + " This is a gray area. Hypixel may count it as macroing and ban the "
+                        + "account. Are you sure?"),
+                Component.literal("Turn it on"), Component.literal("Cancel"));
+    }
+
+    private void maybeConfirm(Minecraft client) {
+        if (pendingConfirm == null || GameUtil.currentScreen() != null) return;
+        client.gui.setScreen(pendingConfirm);
+        pendingConfirm = null;
+    }
+
+    private void fillSign() {
+        if (!config.autosign || !STATE.running() || !STATE.current()) return;
+        if (!(GameUtil.currentScreen() instanceof AbstractSignEditScreen screen)) return;
+        AssistState.Step step = STATE.step();
+        String amount = step.text();
+        if (!step.isSign() || amount.isEmpty() || !amount.chars().allMatch(Character::isDigit)) return;
+        int context = screenContext();
+        if (context == filledSign || context != acceptedContext) return;
+        filledSign = context;
+        SignEditScreenAccessor sign = (SignEditScreenAccessor) screen;
+        String[] lines = sign.bzassist$getMessages();
+        if (sign.bzassist$getLine() != 0 || lines == null || lines.length == 0
+                || (lines[0] != null && !lines[0].isEmpty())) return;
+        var field = sign.bzassist$getSignField();
+        if (field == null) return;
+        field.selectAll();
+        field.insertText(amount);
     }
 
     public void loginReminders(boolean on) {

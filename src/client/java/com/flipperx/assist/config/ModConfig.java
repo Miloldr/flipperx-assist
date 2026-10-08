@@ -22,6 +22,12 @@ public final class ModConfig {
     public boolean loginReminders = true;
     public boolean autocommand = false;
     public boolean autosign = false;
+    public boolean tabFill = true;
+    public int tabFills = 0;
+    public String highlightColor = "#E8A33D";
+    public String highlightShape = "OUTLINE_FILL";
+    public int highlightWidth = 1;
+    public String highlightPulse = "ALWAYS";
     public String lastVersion;
     public String updateTried;
 

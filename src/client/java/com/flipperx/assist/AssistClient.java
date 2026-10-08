@@ -6,10 +6,12 @@ import com.flipperx.assist.game.GameUtil;
 import com.flipperx.assist.game.Location;
 import com.flipperx.assist.game.ScreenReader;
 import com.flipperx.assist.hud.AssistHud;
+import com.flipperx.assist.hud.GhostText;
 import com.flipperx.assist.hud.ProfitPops;
 import com.flipperx.assist.mixin.SignEditScreenAccessor;
 import com.flipperx.assist.net.AssistSocket;
 import com.flipperx.assist.net.VersionCheck;
+import com.flipperx.assist.screen.SettingsScreen;
 import com.flipperx.assist.screen.Summary;
 import com.flipperx.assist.screen.SummaryScreen;
 import com.flipperx.assist.update.Updater;
@@ -65,10 +67,12 @@ public class AssistClient implements ClientModInitializer {
     private KeyMapping stopKey;
     private KeyMapping commandKey;
     private ConfirmScreen pendingConfirm;
+    private boolean settingsPending;
     private int filledSign;
     private String sentCommand;
     private long sentCommandAt;
     private static final long RESEND_AFTER_MS = 3_000;
+    private static final int TAB_CHIP_USES = 3;
 
     private volatile String authUuid = "";
     private volatile boolean authSent = false;
@@ -209,6 +213,7 @@ public class AssistClient implements ClientModInitializer {
             greet(uuid);
         }
         maybeConfirm(client);
+        maybeOpenSettings(client);
         if (authBlocked) return;
         if (config.tokenFor(uuid) == null && pendingLinkUuid == null) {
             STATE.status("Run /flipperx login to link this account.");
@@ -390,6 +395,23 @@ public class AssistClient implements ClientModInitializer {
         return commandKey.getTranslatedKeyMessage().getString();
     }
 
+    public String tabCommand(String typed) {
+        if (!config.tabFill || !Location.skyBlock() || !STATE.running() || !STATE.current()) return null;
+        AssistState.Step step = STATE.step();
+        if (!step.isCommand() || !GhostText.owns(typed, step.text())) return null;
+        return "/" + step.text();
+    }
+
+    public boolean tabChip() {
+        return config.tabFill && config.tabFills < TAB_CHIP_USES;
+    }
+
+    public void tabFilled() {
+        if (config.tabFills >= TAB_CHIP_USES) return;
+        config.tabFills++;
+        config.save();
+    }
+
     public void autocommand(Boolean on) {
         if (on == null) {
             chat(config.autocommand ? "Autocommand is on." : "Autocommand is off.");
@@ -449,6 +471,16 @@ public class AssistClient implements ClientModInitializer {
                 Component.literal(what + " This is a gray area. Hypixel may count it as macroing and ban the "
                         + "account. Are you sure?"),
                 Component.literal("Turn it on"), Component.literal("Cancel"));
+    }
+
+    public void settings() {
+        settingsPending = true;
+    }
+
+    private void maybeOpenSettings(Minecraft client) {
+        if (!settingsPending || GameUtil.currentScreen() != null) return;
+        settingsPending = false;
+        client.gui.setScreen(new SettingsScreen());
     }
 
     private void maybeConfirm(Minecraft client) {
@@ -800,6 +832,7 @@ public class AssistClient implements ClientModInitializer {
     public void printHelp() {
         chat("§e/flipperx login §7link this account   §e/flipperx start §7or §e] §7begin");
         chat("§e/flipperx hud reset §7restore the panel position");
+        chat("§e/flipperx settings §7slot highlight and Tab fill");
         chat("§e/flipperx goal 500m Hyperion §7save toward something   §e/flipperx goal clear §7drop it");
         chat("§e/flipperx summary §7the last session again");
         chat("§e/flipperx update §7download the latest version");

@@ -25,6 +25,18 @@ public class GhostTextCheck {
         eq("...and gets no ghost", GhostText.of("hello there", "bz d d").hasGhost(), false);
         eq("a different command is left alone", GhostText.of("/home", "bz d d").hasRed(), false);
         eq("...and still tracks the right one", GhostText.of("/bz ", "bz d d").ghost(), "d d");
+        eq("a message starting with the same letter", GhostText.of("bro", "bz d d").hasRed(), false);
+        eq("...gets no ghost either", GhostText.of("b", "bz d d").hasGhost(), false);
+
+        System.out.println("who owns the box:");
+        eq("slash only", GhostText.owns("/", "bz d d"), true);
+        eq("on track", GhostText.owns("/bz d", "bz d d"), true);
+        eq("complete", GhostText.owns("/bz d d", "bz d d"), true);
+        eq("gone wrong after the first letter", GhostText.owns("/bazaar", "bz d d"), true);
+        eq("wrong from the first letter", GhostText.owns("/home", "bz d d"), false);
+        eq("empty box", GhostText.owns("", "bz d d"), false);
+        eq("a chat message", GhostText.owns("bz d d", "bz d d"), false);
+        eq("no instruction", GhostText.owns("/", ""), false);
 
         System.out.println("no instruction:");
         eq("null target", GhostText.of("/bz", null).hasGhost(), false);

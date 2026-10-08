@@ -7,19 +7,54 @@ import com.flipperx.assist.hud.GhostText;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.CommandSuggestions;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.ChatScreen;
+import net.minecraft.client.input.KeyEvent;
 
+import org.lwjgl.glfw.GLFW;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(ChatScreen.class)
 public abstract class ChatScreenMixin {
     @Shadow
     protected EditBox input;
+
+    @Shadow
+    private CommandSuggestions commandSuggestions;
+
+    @Unique
+    private static final String TAB = "Tab";
+
+    @Inject(method = "keyPressed", at = @At("HEAD"), cancellable = true)
+    private void bzassist$tabFill(KeyEvent event, CallbackInfoReturnable<Boolean> cir) {
+        if (event.key() != GLFW.GLFW_KEY_TAB || input == null) return;
+        AssistClient client = AssistClient.get();
+        String command = client == null ? null : client.tabCommand(input.getValue());
+        if (command == null) return;
+        if (!command.equals(input.getValue())) {
+            input.setValue(command);
+            input.moveCursorToEnd(false);
+            client.tabFilled();
+        }
+        cir.setReturnValue(true);
+    }
+
+    @Inject(method = "extractRenderState", at = @At("HEAD"))
+    private void bzassist$quietVanilla(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta,
+                                       CallbackInfo ci) {
+        if (input == null || commandSuggestions == null) return;
+        AssistClient client = AssistClient.get();
+        if (client == null || client.tabCommand(input.getValue()) == null) return;
+        commandSuggestions.hide();
+        input.setSuggestion(null);
+    }
 
     @Inject(method = "extractRenderState", at = @At("TAIL"))
     private void bzassist$drawGhost(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta,
@@ -41,7 +76,12 @@ public abstract class ChatScreenMixin {
         int y = box.bzassist$getTextY();
 
         if (render.hasGhost()) {
-            graphics.text(mc.font, render.ghost(), originX + mc.font.width(visible), y, 0xFF6E6E6E, false);
+            int ghostX = originX + mc.font.width(visible);
+            graphics.text(mc.font, render.ghost(), ghostX, y, 0xFF6E6E6E, false);
+            AssistClient client = AssistClient.get();
+            if (client != null && client.tabChip()) {
+                graphics.text(mc.font, TAB, ghostX + mc.font.width(render.ghost()) + 6, y, 0xFF8A8A8A, false);
+            }
         } else {
             int from = Math.max(render.redFrom(), shown);
             if (from >= typed.length()) return;

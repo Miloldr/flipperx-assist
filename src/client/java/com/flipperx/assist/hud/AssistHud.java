@@ -40,12 +40,13 @@ public final class AssistHud {
     private static final float NOTICE_FADE_MS = 400f;
     private static final float MOVE_TAU_MS = 70f;
     private static final float DIM_TAU_MS = 120f;
-    private static final float HIGHLIGHT_TAU_MS = 55f;
     private static final float GOAL_TAU_MS = 220f;
     private static final float DIMMED = 0.55f;
     private static final float COUNT_MS = 650f;
     private static final float GLOW_MS = 1100f;
     private static final float DELTA_MS = 2200f;
+
+    private static final SlotHighlight HIGHLIGHT = new SlotHighlight();
 
     private static boolean dragging = false;
     private static int dragDx, dragDy;
@@ -58,9 +59,6 @@ public final class AssistHud {
     private static long lastFrameNs;
     private static float px = Float.NaN, py, ph;
     private static float dim = 1f;
-    private static float hx = Float.NaN, hy;
-    private static Screen highlightScreen;
-    private static long lastHighlightNs;
     private static double shownProfit = Double.NaN, countFrom, countTo;
     private static long countAt, glowAt;
     private static float goalShown = -1f;
@@ -285,30 +283,11 @@ public final class AssistHud {
     }
 
     public static void renderHighlight(GuiGraphicsExtractor g, Screen screen, int slotX, int slotY) {
-        long nowNs = System.nanoTime();
-        float dt = lastHighlightNs == 0 ? 0f : Math.min(100f, (nowNs - lastHighlightNs) / 1_000_000f);
-        lastHighlightNs = nowNs;
-        if (Float.isNaN(hx) || highlightScreen != screen) {
-            hx = slotX; hy = slotY;
-            highlightScreen = screen;
-        } else {
-            float k = approach(dt, HIGHLIGHT_TAU_MS);
-            hx += (slotX - hx) * k;
-            hy += (slotY - hy) * k;
-        }
-        int x = Math.round(hx), y = Math.round(hy);
-        float pulse = 0.72f + 0.28f * (float) Math.sin(System.currentTimeMillis() / 1000.0 * Math.PI * 2 / 1.6);
-        int amber = argb(AMBER, pulse);
-        g.fill(x - 1, y - 1, x + 17, y, amber);
-        g.fill(x - 1, y + 16, x + 17, y + 17, amber);
-        g.fill(x - 1, y, x, y + 16, amber);
-        g.fill(x + 16, y, x + 17, y + 16, amber);
-        g.fill(x, y, x + 16, y + 16, argb(AMBER, 0.25f * pulse));
+        HIGHLIGHT.draw(g, screen, slotX, slotY, SlotHighlight.Look.of(ModConfig.get()));
     }
 
     public static void clearHighlight() {
-        hx = Float.NaN;
-        highlightScreen = null;
+        HIGHLIGHT.clear();
     }
 
     private static void addLines(List<Line> lines, String text, int width, int color) {

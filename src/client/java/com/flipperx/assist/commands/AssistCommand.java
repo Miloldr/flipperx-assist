@@ -51,6 +51,10 @@ public final class AssistCommand {
                     AssistClient.get().showSummary();
                     return 1;
                 }))
+                .then(ClientCommands.literal("settings").executes(ctx -> {
+                    AssistClient.get().settings();
+                    return 1;
+                }))
                 .then(ClientCommands.literal("discord").executes(ctx -> {
                     AssistClient.get().discord();
                     return 1;

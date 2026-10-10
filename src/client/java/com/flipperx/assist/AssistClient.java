@@ -681,6 +681,10 @@ public class AssistClient implements ClientModInitializer {
             case "message" -> {
                 if (msg.has("text")) chat(msg.get("text").getAsString());
             }
+            case "chat" -> {
+                Component line = Chat.fromServer(msg);
+                if (line != null) raw(line);
+            }
             default -> { }
         }
     }
@@ -847,6 +851,15 @@ public class AssistClient implements ClientModInitializer {
 
     private static void chat(String text) {
         chat(Component.literal(text));
+    }
+
+    private static void raw(Component line) {
+        Minecraft mc = Minecraft.getInstance();
+        mc.execute(() -> {
+            if (mc.gui != null && mc.gui.hud != null) {
+                mc.gui.hud.getChat().addClientSystemMessage(line);
+            }
+        });
     }
 
     private static void chat(Component body) {

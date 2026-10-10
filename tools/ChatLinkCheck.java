@@ -1,5 +1,8 @@
 import com.flipperx.assist.Chat;
 import com.flipperx.assist.net.VersionCheck;
+import com.google.gson.JsonParser;
+import net.minecraft.SharedConstants;
+import net.minecraft.server.Bootstrap;
 
 import net.minecraft.client.StringSplitter;
 import net.minecraft.network.chat.ClickEvent;
@@ -32,7 +35,24 @@ public class ChatLinkCheck {
         return out.toString();
     }
 
+    static void serverChat() {
+        System.out.println("a server chat line prints as it was sent:");
+        SharedConstants.tryDetectVersion();
+        Bootstrap.bootStrap();
+        Component c = Chat.fromServer(JsonParser.parseString(
+                "{\"type\":\"chat\",\"component\":{\"text\":\"\",\"extra\":["
+                        + "{\"text\":\"[FlipperX]\",\"color\":\"gold\"},"
+                        + "{\"text\":\" Two players on one coop.\",\"color\":\"yellow\"}]}}").getAsJsonObject());
+        eq("text", c == null ? null : c.getString(), "[FlipperX] Two players on one coop.");
+        eq("first part gold", c == null ? null : c.getSiblings().get(0).getStyle().getColor(), "gold");
+        Component plain = Chat.fromServer(JsonParser.parseString("{\"type\":\"chat\",\"text\":\"Hello\"}").getAsJsonObject());
+        eq("plain text", plain == null ? null : plain.getString(), "Hello");
+        Component broken = Chat.fromServer(JsonParser.parseString("{\"type\":\"chat\",\"component\":{\"nope\":1},\"text\":\"fallback\"}").getAsJsonObject());
+        eq("unreadable component falls back to text", broken == null ? null : broken.getString(), "fallback");
+    }
+
     public static void main(String[] a) {
+        serverChat();
         String url = "https://flipperx.digital/assist/link?token=abcdefghijklmnopqrstuv";
         Component message = Chat.line(Component.literal("Click to finish logging in: ").append(Chat.link(url, url)));
 

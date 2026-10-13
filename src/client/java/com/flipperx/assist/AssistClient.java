@@ -697,6 +697,7 @@ public class AssistClient implements ClientModInitializer {
         Minecraft mc = Minecraft.getInstance();
         o.addProperty("mc_username", mc.getUser() == null ? "" : mc.getUser().getName());
         o.addProperty("version", VersionCheck.current());
+        o.addProperty("install", config.install());
         socket.send(o);
         STATE.status("Authenticating...");
         authAt = System.currentTimeMillis();
@@ -724,6 +725,7 @@ public class AssistClient implements ClientModInitializer {
         o.addProperty("mc_uuid", pendingLinkUuid);
         o.addProperty("mc_username", Minecraft.getInstance().getUser().getName());
         o.addProperty("version", VersionCheck.current());
+        o.addProperty("install", config.install());
         linkSent = socket.send(o);
         STATE.status("Finish linking using the link in chat.");
     }

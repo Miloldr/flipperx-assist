@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 public final class ModConfig {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -30,6 +31,7 @@ public final class ModConfig {
     public String highlightPulse = "ALWAYS";
     public String lastVersion;
     public String updateTried;
+    public String install;
 
     private static ModConfig instance;
 
@@ -59,6 +61,14 @@ public final class ModConfig {
             Files.writeString(PATH, GSON.toJson(this));
         } catch (Exception ignored) {
         }
+    }
+
+    public synchronized String install() {
+        if (install == null || install.length() < 16) {
+            install = UUID.randomUUID().toString().replace("-", "");
+            save();
+        }
+        return install;
     }
 
     public String tokenFor(String uuid) {

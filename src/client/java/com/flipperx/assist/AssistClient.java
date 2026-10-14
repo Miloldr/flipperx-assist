@@ -40,6 +40,7 @@ import net.minecraft.network.Connection;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.Identifier;
+import net.minecraft.world.entity.player.Inventory;
 
 import org.lwjgl.glfw.GLFW;
 
@@ -98,8 +99,10 @@ public class AssistClient implements ClientModInitializer {
     private Prefetch prefetch;
     private static final long PREFETCH_TTL_MS = 15_000;
 
-    private record Prefetch(AssistState.Step step, boolean sign, String title, List<String> names,
-                            int from, long until) {}
+    private record Target(AssistState.Step step, String on, String title, boolean prefix,
+                          List<String> names, boolean inv) {}
+
+    private record Prefetch(Target target, int from, long until) {}
     private long authAt;
     private boolean justLinked;
     private Connection gameConnection;
@@ -570,19 +573,35 @@ public class AssistClient implements ClientModInitializer {
     }
 
     private void notePrefetch(JsonObject msg, int from, boolean replace) {
-        if (!msg.has("next") || !msg.get("next").isJsonObject()) {
+        Target t = null;
+        if (msg.has("ahead") && msg.get("ahead").isJsonArray()) {
+            for (var e : msg.getAsJsonArray("ahead")) {
+                if (e.isJsonObject()) {
+                    t = target(e.getAsJsonObject(), null);
+                    break;
+                }
+            }
+        } else if (msg.has("next") && msg.get("next").isJsonObject()) {
+            JsonObject n = msg.getAsJsonObject("next");
+            t = target(n, n.has("sign") && n.get("sign").getAsBoolean() ? "sign" : "menu");
+        }
+        if (t == null) {
             if (replace) prefetch = null;
             return;
         }
-        JsonObject n = msg.getAsJsonObject("next");
+        prefetch = new Prefetch(t, from, System.currentTimeMillis() + PREFETCH_TTL_MS);
+    }
+
+    private static Target target(JsonObject n, String on) {
         List<String> names = new ArrayList<>();
         if (n.has("names") && n.get("names").isJsonArray()) {
             for (var e : n.getAsJsonArray("names")) names.add(e.getAsString());
         }
+        String where = on != null ? on : n.has("on") && !n.get("on").isJsonNull() ? n.get("on").getAsString() : "menu";
         String title = n.has("title") && !n.get("title").isJsonNull() ? n.get("title").getAsString() : "";
-        boolean sign = n.has("sign") && n.get("sign").getAsBoolean();
-        prefetch = new Prefetch(AssistState.Step.from(n), sign, title.toLowerCase(Locale.ROOT), names,
-                from, System.currentTimeMillis() + PREFETCH_TTL_MS);
+        boolean prefix = n.has("prefix") && n.get("prefix").getAsBoolean();
+        boolean inv = n.has("inv") && n.get("inv").getAsBoolean();
+        return new Target(AssistState.Step.from(n), where, title.toLowerCase(Locale.ROOT), prefix, names, inv);
     }
 
     private void maybePrefetch() {
@@ -592,28 +611,37 @@ public class AssistClient implements ClientModInitializer {
             prefetch = null;
             return;
         }
-        int context = screenContext();
-        if (context == 0 || context == p.from()) return;
         Screen screen = GameUtil.currentScreen();
+        if (screen instanceof ChatScreen) return;
+        int context = screenContext();
+        if (context == p.from()) return;
+        Target t = p.target();
         int slot = -1;
         String name = null;
-        if (p.sign()) {
+        if ("world".equals(t.on())) {
+            if (screen != null) {
+                prefetch = null;
+                return;
+            }
+        } else if (screen == null) {
+            return;
+        } else if ("sign".equals(t.on())) {
             if (!(screen instanceof AbstractSignEditScreen)) {
                 prefetch = null;
                 return;
             }
         } else {
-            if (screen instanceof AbstractSignEditScreen
-                    || !p.title().equals(GameUtil.screenTitle().toLowerCase(Locale.ROOT))) {
+            if (screen instanceof AbstractSignEditScreen || !titleMatches(t)) {
                 prefetch = null;
                 return;
             }
             var menu = GameUtil.handler();
             if (menu == null) return;
-            for (String want : p.names()) {
+            for (String want : t.names()) {
                 for (var s : menu.slots) {
+                    if (s.getItem().isEmpty() || (t.inv() && !(s.container instanceof Inventory))) continue;
                     String raw = GameUtil.rawName(s.getItem());
-                    if (!s.getItem().isEmpty() && GameUtil.strip(raw).trim().equals(want)) {
+                    if (GameUtil.strip(raw).trim().equals(want)) {
                         slot = s.index;
                         name = raw;
                         break;
@@ -624,9 +652,15 @@ public class AssistClient implements ClientModInitializer {
             if (slot < 0) return;
         }
         prefetch = null;
-        STATE.receiveStep(p.step().ahead(slot, STATE.step()), false);
+        STATE.receiveStep(t.step().ahead(slot, STATE.step()), false);
         acceptedContext = context;
         acceptedSlotName = name;
+    }
+
+    private static boolean titleMatches(Target t) {
+        if (t.title().isEmpty()) return true;
+        String title = GameUtil.screenTitle().toLowerCase(Locale.ROOT);
+        return t.prefix() ? title.startsWith(t.title()) : title.equals(t.title());
     }
 
     private int screenHash() {

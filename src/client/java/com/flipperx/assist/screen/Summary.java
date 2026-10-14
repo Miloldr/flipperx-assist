@@ -6,11 +6,14 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 public record Summary(double profit, Double perHour, long runSeconds, int sales, float[][] series,
-                      Best best, String held, Goal goal, String shareId, String shareUrl) {
+                      Best best, String held, Speed speed, Goal goal, String shareId, String shareUrl) {
     public record Best(String itemId, String itemName, String icon, ItemIcon.Look look, int quantity,
                        double profit) {}
 
     public record Goal(String label, double target, double before, double after) {}
+
+    public record Speed(double seconds, String tier, int tierIndex, int tiers, double fill, String week,
+                        String own, boolean best, double[] recent) {}
 
     public static Summary from(JsonObject o) {
         JsonArray pts = o.has("series") && o.get("series").isJsonArray() ? o.getAsJsonArray("series") : new JsonArray();
@@ -28,6 +31,20 @@ public record Summary(double profit, Double perHour, long runSeconds, int sales,
         }
         String held = null;
         if (o.has("held") && o.get("held").isJsonObject()) held = str(o.getAsJsonObject("held"), "text");
+        Speed speed = null;
+        if (o.has("speed") && o.get("speed").isJsonObject()) {
+            JsonObject sp = o.getAsJsonObject("speed");
+            JsonArray rs = sp.has("recent") && sp.get("recent").isJsonArray() ? sp.getAsJsonArray("recent") : new JsonArray();
+            double[] recent = new double[rs.size()];
+            for (int i = 0; i < rs.size(); i++) recent[i] = rs.get(i).getAsDouble();
+            int tiers = sp.has("tiers") && sp.get("tiers").isJsonArray() ? sp.getAsJsonArray("tiers").size() : 4;
+            int index = (int) num(sp, "tier_index");
+            int count = Math.max(1, tiers);
+            double fill = sp.has("fill") && !sp.get("fill").isJsonNull() ? num(sp, "fill") : (index + 1.0) / count;
+            speed = new Speed(num(sp, "seconds"), str(sp, "tier"), index, count, fill,
+                    str(sp, "week"), str(sp, "own"),
+                    sp.has("best") && !sp.get("best").isJsonNull() && sp.get("best").getAsBoolean(), recent);
+        }
         Goal goal = null;
         if (o.has("goal") && o.get("goal").isJsonObject()) {
             JsonObject g = o.getAsJsonObject("goal");
@@ -35,7 +52,7 @@ public record Summary(double profit, Double perHour, long runSeconds, int sales,
         }
         Double perHour = o.has("per_hour") && !o.get("per_hour").isJsonNull() ? o.get("per_hour").getAsDouble() : null;
         return new Summary(num(o, "profit"), perHour, (long) num(o, "run_s"),
-                o.has("sales") ? o.get("sales").getAsInt() : 0, series, best, held, goal,
+                o.has("sales") ? o.get("sales").getAsInt() : 0, series, best, held, speed, goal,
                 str(o, "share_id"), str(o, "share_url"));
     }
 

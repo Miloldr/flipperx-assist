@@ -1,6 +1,7 @@
 package com.flipperx.assist.screen;
 
 import com.flipperx.assist.AssistClient;
+import com.flipperx.assist.config.ModConfig;
 import com.flipperx.assist.hud.AssistHud;
 import com.flipperx.assist.hud.ItemIcon;
 
@@ -42,6 +43,9 @@ public final class SummaryScreen extends Screen {
     private int shareX0, shareY0, shareX1, shareY1;
     private long copiedAt;
     private static final long COPIED_MS = 2500;
+    private static final String SHARE = "Replay & Share";
+    private static final int GLOW_SESSIONS = 3;
+    private boolean glow;
     private static final String[] HINTS = {
             "Esc or any movement key closes this", "Esc or moving closes this", "Esc closes this"};
     private float a = 1f;
@@ -49,6 +53,12 @@ public final class SummaryScreen extends Screen {
     public SummaryScreen(Summary summary) {
         super(Component.literal("Session summary"));
         this.s = summary;
+        ModConfig cfg = ModConfig.get();
+        if (summary.shareUrl() != null && !cfg.replayClicked && cfg.replayGlows < GLOW_SESSIONS) {
+            glow = true;
+            cfg.replayGlows++;
+            cfg.save();
+        }
         double lo = 0, hi = 0;
         for (float[] p : summary.series()) {
             lo = Math.min(lo, p[1]);
@@ -170,10 +180,19 @@ public final class SummaryScreen extends Screen {
         button(g, f, close, closeX0, closeY0, closeX1, closeY1, textY, mouseX, mouseY);
         int buttonsLeft = closeX0;
         if (s.shareUrl() != null) {
-            String share = System.currentTimeMillis() - copiedAt < COPIED_MS ? "Copied" : "Share";
-            shareX1 = closeX0 - 4; shareX0 = shareX1 - Math.max(f.width("Share"), f.width("Copied")) - 20;
+            String share = System.currentTimeMillis() - copiedAt < COPIED_MS ? "Copied" : SHARE;
+            shareX1 = closeX0 - 4; shareX0 = shareX1 - Math.max(f.width(SHARE), f.width("Copied")) - 20;
             shareY0 = closeY0; shareY1 = closeY1;
+            if (glow) glow(g, shareX0, shareY0, shareX1, shareY1, t);
             button(g, f, share, shareX0, shareY0, shareX1, shareY1, textY, mouseX, mouseY);
+            if (glow) {
+                float p = pulse(t);
+                box(g, shareX0, shareY0, shareX1, shareY1, color(AssistHud.AMBER, 0.45f + 0.55f * p));
+                if (!share.equals("Copied")) {
+                    g.text(f, share, shareX0 + (shareX1 - shareX0 - f.width(share)) / 2, textY,
+                            color(AssistHud.AMBER), false);
+                }
+            }
             buttonsLeft = shareX0;
         }
         for (String hint : HINTS) {
@@ -191,6 +210,18 @@ public final class SummaryScreen extends Screen {
         box(g, x0, y0, x1, y1, color(hover ? 0x5A5A5A : 0x3A3A3A));
         g.text(f, label, x0 + (x1 - x0 - f.width(label)) / 2, textY,
                 color(hover ? AssistHud.AMBER : AssistHud.TEXT), false);
+    }
+
+    private static float pulse(long t) {
+        return 0.5f - 0.5f * (float) Math.cos(t / 1400.0 * Math.PI * 2);
+    }
+
+    private void glow(GuiGraphicsExtractor g, int x0, int y0, int x1, int y1, long t) {
+        float p = pulse(t);
+        for (int i = 4; i >= 1; i--) {
+            float alpha = (0.05f + 0.1f * p) * (5 - i) / 4f;
+            g.fill(x0 - i, y0 - i, x1 + i, y1 + i, color(AssistHud.AMBER, alpha));
+        }
     }
 
     private int height(int heldLines) {
@@ -318,6 +349,12 @@ public final class SummaryScreen extends Screen {
         if (s.shareUrl() != null && mx >= shareX0 && mx < shareX1 && my >= shareY0 && my < shareY1) {
             AssistClient client = AssistClient.get();
             if (client != null) client.shareSummary(s.shareUrl(), s.shareId());
+            glow = false;
+            ModConfig cfg = ModConfig.get();
+            if (!cfg.replayClicked) {
+                cfg.replayClicked = true;
+                cfg.save();
+            }
             copiedAt = System.currentTimeMillis();
             return true;
         }

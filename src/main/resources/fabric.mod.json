@@ -13,7 +13,7 @@
   "mixins": ["bzassist.mixins.json"],
   "depends": {
     "fabricloader": ">=0.16.0",
-    "minecraft": ">=${minecraft_version}",
+    "minecraft": ">=26.1 <26.4",
     "java": ">=${java_version}",
     "fabric-api": "*"
   }

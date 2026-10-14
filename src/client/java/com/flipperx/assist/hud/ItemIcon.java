@@ -1,5 +1,6 @@
 package com.flipperx.assist.hud;
 
+import com.flipperx.assist.game.Compat;
 import com.google.common.collect.ImmutableMultimap;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -9,7 +10,6 @@ import com.mojang.authlib.properties.PropertyMap;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.item.MissingItemModel;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -58,8 +58,7 @@ public final class ItemIcon {
         }
         Identifier icon = IconCache.get(itemId, url);
         if (icon == null) return false;
-        g.blit(RenderPipelines.GUI_TEXTURED, icon, x, y, 0f, 0f, 16, 16, 16, 16, tint);
-        return true;
+        return Compat.blitIcon(g, icon, x, y, tint);
     }
 
     private static ItemStack stack(Look look) {

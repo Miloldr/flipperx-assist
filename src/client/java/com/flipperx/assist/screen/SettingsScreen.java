@@ -1,6 +1,7 @@
 package com.flipperx.assist.screen;
 
 import com.flipperx.assist.config.ModConfig;
+import com.flipperx.assist.game.Compat;
 import com.flipperx.assist.hud.AssistHud;
 import com.flipperx.assist.hud.SlotHighlight;
 import com.flipperx.assist.hud.SlotHighlight.Look;
@@ -61,7 +62,7 @@ public final class SettingsScreen extends Screen {
 
     public SettingsScreen() {
         super(Component.literal("Bazaar Assist settings"));
-        for (int i = 0; i < previewItems.length; i++) previewItems[i] = new ItemStack(Items.STAINED_GLASS_PANE.black());
+        for (int i = 0; i < previewItems.length; i++) previewItems[i] = new ItemStack(Compat.item("black_stained_glass_pane"));
         previewItems[10] = new ItemStack(Items.GOLDEN_HORSE_ARMOR);
         previewItems[11] = new ItemStack(Items.HOPPER);
         previewItems[13] = shiny(Items.DIAMOND_BLOCK);

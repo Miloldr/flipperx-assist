@@ -107,9 +107,7 @@ public final class ScreenReader {
     }
 
     private static JsonObject cookie() {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.gui == null || mc.gui.hud == null) return null;
-        PlayerListHudAccessor acc = (PlayerListHudAccessor) (Object) mc.gui.hud.getTabList();
+        PlayerListHudAccessor acc = (PlayerListHudAccessor) (Object) Compat.tabList();
         if (acc == null) return null;
         Component header = acc.bzassist$getHeader();
         Component footer = acc.bzassist$getFooter();

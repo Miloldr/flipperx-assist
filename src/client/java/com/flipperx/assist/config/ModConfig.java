@@ -30,6 +30,8 @@ public final class ModConfig {
     public String highlightShape = "OUTLINE_FILL";
     public int highlightWidth = 1;
     public String highlightPulse = "ALWAYS";
+    public int replayGlows = 0;
+    public boolean replayClicked = false;
     public String lastVersion;
     public String updateTried;
     public String install;

@@ -12,7 +12,6 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.client.input.KeyEvent;
 
-import org.lwjgl.glfw.GLFW;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -34,7 +33,7 @@ public abstract class ChatScreenMixin {
 
     @Inject(method = "keyPressed", at = @At("HEAD"), cancellable = true)
     private void bzassist$tabFill(KeyEvent event, CallbackInfoReturnable<Boolean> cir) {
-        if (event.key() != GLFW.GLFW_KEY_TAB || input == null) return;
+        if (!event.isCycleFocus() || input == null) return;
         AssistClient client = AssistClient.get();
         String command = client == null ? null : client.tabCommand(input.getValue());
         if (command == null) return;

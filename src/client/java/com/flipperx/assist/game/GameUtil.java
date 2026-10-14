@@ -49,7 +49,7 @@ public final class GameUtil {
     }
 
     public static Screen currentScreen() {
-        return mc().gui == null ? null : mc().gui.screen();
+        return Compat.screen();
     }
 
     public static AbstractContainerMenu handler() {

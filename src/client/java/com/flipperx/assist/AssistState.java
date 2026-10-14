@@ -36,6 +36,13 @@ public final class AssistState {
             return isCommand() || isNpc() || isClick() || isSign() || "close".equals(kind);
         }
 
+        public Step ahead(int atSlot, Step current) {
+            boolean same = current != null && itemId != null && itemId.equals(current.itemId);
+            return new Step(kind, text, atSlot, click, label, hint, itemId,
+                    same ? current.itemName : itemName, same ? current.icon : icon,
+                    same ? current.look : look);
+        }
+
         public boolean reads(Step other) {
             return other != null && kind.equals(other.kind) && text.equals(other.text)
                     && label.equals(other.label) && slot == other.slot && click.equals(other.click);

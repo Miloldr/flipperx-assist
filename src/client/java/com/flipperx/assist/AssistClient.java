@@ -10,6 +10,7 @@ import com.flipperx.assist.hud.GhostText;
 import com.flipperx.assist.hud.ProfitPops;
 import com.flipperx.assist.mixin.SignEditScreenAccessor;
 import com.flipperx.assist.net.AssistSocket;
+import com.flipperx.assist.net.Reports;
 import com.flipperx.assist.net.VersionCheck;
 import com.flipperx.assist.screen.SettingsScreen;
 import com.flipperx.assist.screen.Summary;
@@ -43,7 +44,9 @@ import net.minecraft.resources.Identifier;
 import org.lwjgl.glfw.GLFW;
 
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -85,13 +88,18 @@ public class AssistClient implements ClientModInitializer {
     private long leftWorldAt;
     private static final long WORLD_GONE_MS = 15_000;
     private boolean authBlocked;
-    private boolean awaitingStep;
+    private final Reports reports = new Reports();
     private int reportedContext;
     private int acceptedContext;
     private String acceptedSlotName;
     private Map<Integer, String> reportedSlotNames = new HashMap<>();
     private boolean forceReport;
     private boolean discardStep;
+    private Prefetch prefetch;
+    private static final long PREFETCH_TTL_MS = 15_000;
+
+    private record Prefetch(AssistState.Step step, boolean sign, String title, List<String> names,
+                            int from, long until) {}
     private long authAt;
     private boolean justLinked;
     private Connection gameConnection;
@@ -203,8 +211,9 @@ public class AssistClient implements ClientModInitializer {
         if (authConnection != socket.generation()) {
             authSent = false;
             linkSent = false;
-            awaitingStep = false;
+            reports.reset();
             discardStep = false;
+            prefetch = null;
         }
         boolean skyBlock = Location.skyBlock();
         if (skyBlock) {
@@ -530,25 +539,94 @@ public class AssistClient implements ClientModInitializer {
     private void maybeReport() {
         if (!STATE.linked() || !authSent || !socket.connected()) return;
         long now = System.currentTimeMillis();
+        maybePrefetch();
         int hash = screenHash();
         boolean changed = hash != lastScreenHash;
         AssistState.Step shown = STATE.step();
         if (shown.isClick()) STATE.current(targetMatches(shown, acceptedSlotName));
-        if (awaitingStep) {
-            if (now - lastTickAt > 30_000) socket.close();
-            return;
-        }
+        boolean pipelined = reports.waiting();
+        if (pipelined && now - lastTickAt > 30_000) socket.close();
+        if (reports.holds(changed, screenContext() == reportedContext)) return;
         if (!forceReport && !changed && now - lastTickAt < tickEveryMs) return;
+        int context = screenContext();
+        Map<Integer, String> names = new HashMap<>();
+        var menu = GameUtil.handler();
+        if (menu != null) for (var slot : menu.slots) {
+            names.put(slot.index, GameUtil.rawName(slot.getItem()));
+        }
+        JsonObject tick = ScreenReader.tick();
+        long seq = reports.next();
+        if (reports.numbered()) {
+            tick.addProperty("seq", seq);
+            if (pipelined) tick.addProperty("pipelined", true);
+        }
+        if (!socket.send(tick)) return;
         forceReport = false;
         lastScreenHash = hash;
         lastTickAt = now;
-        reportedContext = screenContext();
-        reportedSlotNames.clear();
-        var menu = GameUtil.handler();
-        if (menu != null) for (var slot : menu.slots) {
-            reportedSlotNames.put(slot.index, GameUtil.rawName(slot.getItem()));
+        reportedContext = context;
+        reportedSlotNames = names;
+        reports.sent(seq, context);
+    }
+
+    private void notePrefetch(JsonObject msg, int from, boolean replace) {
+        if (!msg.has("next") || !msg.get("next").isJsonObject()) {
+            if (replace) prefetch = null;
+            return;
         }
-        awaitingStep = socket.send(ScreenReader.tick());
+        JsonObject n = msg.getAsJsonObject("next");
+        List<String> names = new ArrayList<>();
+        if (n.has("names") && n.get("names").isJsonArray()) {
+            for (var e : n.getAsJsonArray("names")) names.add(e.getAsString());
+        }
+        String title = n.has("title") && !n.get("title").isJsonNull() ? n.get("title").getAsString() : "";
+        boolean sign = n.has("sign") && n.get("sign").getAsBoolean();
+        prefetch = new Prefetch(AssistState.Step.from(n), sign, title.toLowerCase(Locale.ROOT), names,
+                from, System.currentTimeMillis() + PREFETCH_TTL_MS);
+    }
+
+    private void maybePrefetch() {
+        Prefetch p = prefetch;
+        if (p == null) return;
+        if (!STATE.running() || System.currentTimeMillis() > p.until()) {
+            prefetch = null;
+            return;
+        }
+        int context = screenContext();
+        if (context == 0 || context == p.from()) return;
+        Screen screen = GameUtil.currentScreen();
+        int slot = -1;
+        String name = null;
+        if (p.sign()) {
+            if (!(screen instanceof AbstractSignEditScreen)) {
+                prefetch = null;
+                return;
+            }
+        } else {
+            if (screen instanceof AbstractSignEditScreen
+                    || !p.title().equals(GameUtil.screenTitle().toLowerCase(Locale.ROOT))) {
+                prefetch = null;
+                return;
+            }
+            var menu = GameUtil.handler();
+            if (menu == null) return;
+            for (String want : p.names()) {
+                for (var s : menu.slots) {
+                    String raw = GameUtil.rawName(s.getItem());
+                    if (!s.getItem().isEmpty() && GameUtil.strip(raw).trim().equals(want)) {
+                        slot = s.index;
+                        name = raw;
+                        break;
+                    }
+                }
+                if (slot >= 0) break;
+            }
+            if (slot < 0) return;
+        }
+        prefetch = null;
+        STATE.receiveStep(p.step().ahead(slot, STATE.step()), false);
+        acceptedContext = context;
+        acceptedSlotName = name;
     }
 
     private int screenHash() {
@@ -607,6 +685,7 @@ public class AssistClient implements ClientModInitializer {
                 forceReport = true;
                 authUuid = currentUuid();
                 if (msg.has("deflate") && msg.get("deflate").getAsBoolean()) socket.deflate();
+                reports.numbered(msg.has("seq") && msg.get("seq").getAsBoolean());
                 if (msg.has("idle_tick_ms")) tickEveryMs = Math.max(250, Math.min(10_000, msg.get("idle_tick_ms").getAsLong()));
                 boolean running = msg.has("running") && msg.get("running").getAsBoolean();
                 boolean resume = STATE.takeResume();
@@ -639,10 +718,17 @@ public class AssistClient implements ClientModInitializer {
                 chat("§c" + STATE.status());
             }
             case "step" -> {
-                awaitingStep = false;
+                long seq = msg.has("seq") && !msg.get("seq").isJsonNull() ? msg.get("seq").getAsLong() : -1;
+                int answered = reports.context(seq, reportedContext);
+                if (reports.stale(seq)) {
+                    if (!discardStep && STATE.running()) notePrefetch(msg, answered, false);
+                    return;
+                }
+                reports.answer(seq);
                 if (discardStep) {
                     discardStep = false;
                     forceReport = true;
+                    prefetch = null;
                     return;
                 }
                 if (msg.has("hud") && msg.get("hud").isJsonObject()) {
@@ -657,6 +743,7 @@ public class AssistClient implements ClientModInitializer {
                 AssistState.Step incoming = AssistState.Step.from(msg);
                 String targetName = reportedSlotNames.get(incoming.slot());
                 if (screenContext() != reportedContext || !targetMatches(incoming, targetName)) {
+                    if (STATE.running()) notePrefetch(msg, answered, false);
                     forceReport = true;
                     return;
                 }
@@ -664,6 +751,7 @@ public class AssistClient implements ClientModInitializer {
                 STATE.receiveStep(incoming, pending);
                 acceptedContext = reportedContext;
                 acceptedSlotName = targetName;
+                if (!pending) notePrefetch(msg, reportedContext, !"wait".equals(incoming.kind()));
                 if (msg.has("notice") && !msg.get("notice").isJsonNull()) {
                     STATE.notice(msg.get("notice").getAsString(), 5000);
                 }
@@ -764,7 +852,8 @@ public class AssistClient implements ClientModInitializer {
         STATE.step(AssistState.Step.NONE);
         STATE.running(true);
         forceReport = true;
-        discardStep = awaitingStep;
+        discardStep = reports.waiting();
+        prefetch = null;
         if (announce) chat("§aOn. Do what the panel says; it never clicks for you.");
     }
 
@@ -777,7 +866,8 @@ public class AssistClient implements ClientModInitializer {
         STATE.step(AssistState.Step.NONE);
         STATE.status("Paused. Press " + startKey.getTranslatedKeyMessage().getString() + " to start.");
         forceReport = true;
-        discardStep = awaitingStep;
+        discardStep = reports.waiting();
+        prefetch = null;
         chat("Off. " + startAgain());
     }
 

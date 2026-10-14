@@ -165,6 +165,8 @@ public final class SummaryScreen extends Screen {
             y += 3 + 8;
         }
 
+        if (s.speed() != null) y = speed(g, f, s.speed(), left, right, y, t);
+
         for (FormattedCharSequence line : held) {
             g.text(f, line, left, y, color(AssistHud.DIM), false);
             y += LINE;
@@ -224,6 +226,59 @@ public final class SummaryScreen extends Screen {
         }
     }
 
+    private int speed(GuiGraphicsExtractor g, Font f, Summary.Speed sp, int left, int right, int y, long t) {
+        int vx = word(g, f, "Speed", left, y, AssistHud.DIM) + 8;
+        word(g, f, sp.tier() == null ? "" : sp.tier(), vx, y, AssistHud.AMBER);
+        if (sp.best()) {
+            String pb = "New personal best";
+            g.text(f, pb, right - f.width(pb), y, color(AssistHud.AMBER), false);
+        }
+        y += LINE;
+
+        float grow = AssistHud.easeOut3(Math.min(1f, Math.max(0f, (t - 500f) / 900f)));
+        int n = sp.tiers(), gap = 2;
+        int segW = (right - left - gap * (n - 1)) / n;
+        for (int i = 0; i < n; i++) {
+            int x0 = left + i * (segW + gap);
+            int x1 = i == n - 1 ? right : x0 + segW;
+            g.fill(x0, y, x1, y + 3, color(TRACK));
+            float lit = (float) Math.min(1, Math.max(0, sp.fill() * grow * n - i));
+            if (lit > 0) g.fill(x0, y, x0 + Math.round((x1 - x0) * lit), y + 3, color(AssistHud.AMBER));
+        }
+        y += 3 + 6;
+
+        if (sp.week() != null) {
+            word(g, f, "Other players", left, y, AssistHud.DIM);
+            g.text(f, sp.week(), right - f.width(sp.week()), y, color(AssistHud.TEXT), false);
+            y += LINE;
+        }
+        if (sp.own() != null || sp.recent().length > 0) {
+            int bx = word(g, f, "Your sessions", left, y, AssistHud.DIM) + 8;
+            int ownX = sp.own() == null ? right : right - f.width(sp.own());
+            int count = sp.recent().length + 1;
+            int fit = Math.max(1, (ownX - 8 - bx + 1) / 3);
+            for (int i = Math.max(0, count - fit); i < count; i++) {
+                boolean now = i == count - 1;
+                double sec = now ? sp.seconds() : sp.recent()[i];
+                int h = 2 + (int) Math.round(6 * Math.min(1, Math.max(0, (1.6 - sec) / 1.1)));
+                g.fill(bx, y + 8 - h, bx + 2, y + 8, color(now ? AssistHud.AMBER : 0x5A5A5A));
+                bx += 3;
+            }
+            if (sp.own() != null) g.text(f, sp.own(), ownX, y, color(AssistHud.TEXT), false);
+            y += LINE;
+        }
+        return y + 4;
+    }
+
+    private int speedHeight() {
+        Summary.Speed sp = s.speed();
+        if (sp == null) return 0;
+        int h = LINE + 3 + 6 + 4;
+        if (sp.week() != null) h += LINE;
+        if (sp.own() != null || sp.recent().length > 0) h += LINE;
+        return h;
+    }
+
     private int height(int heldLines) {
         int h = PAD * 2;
         h += LINE + 3;
@@ -234,6 +289,7 @@ public final class SummaryScreen extends Screen {
         if (s.goal() != null) h += LINE + 3 + 8;
         h += heldLines * LINE;
         if (heldLines > 0) h += 4;
+        h += speedHeight();
         h += 3 + 1 + FOOT_GAP + BUTTON_H;
         return h;
     }

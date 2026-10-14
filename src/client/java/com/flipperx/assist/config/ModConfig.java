@@ -23,8 +23,9 @@ public final class ModConfig {
     public boolean loginReminders = true;
     public boolean autocommand = false;
     public boolean autosign = false;
-    public boolean tabFill = true;
+    public boolean tabFill = false;
     public int tabFills = 0;
+    public boolean tabFillReset = false;
     public String highlightColor = "#E8A33D";
     public String highlightShape = "OUTLINE_FILL";
     public int highlightWidth = 1;
@@ -47,12 +48,19 @@ public final class ModConfig {
                 ModConfig c = GSON.fromJson(o, ModConfig.class);
                 if (c != null) {
                     if (c.tokens == null) c.tokens = new HashMap<>();
+                    if (!c.tabFillReset) {
+                        c.tabFill = false;
+                        c.tabFillReset = true;
+                        c.save();
+                    }
                     return c;
                 }
             }
         } catch (Exception ignored) {
         }
-        return new ModConfig();
+        ModConfig fresh = new ModConfig();
+        fresh.tabFillReset = true;
+        return fresh;
     }
 
     public synchronized void save() {

@@ -262,7 +262,7 @@ public final class SettingsScreen extends Screen {
         cfg.highlightShape = Look.DEFAULT.shape().name();
         cfg.highlightWidth = Look.DEFAULT.width();
         cfg.highlightPulse = Look.DEFAULT.pulse().name();
-        cfg.tabFill = true;
+        cfg.tabFill = false;
         cfg.save();
         hex.setValue(cfg.highlightColor);
     }

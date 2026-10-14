@@ -9,6 +9,7 @@ import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 
 public final class AssistCommand {
     public static final String NAME = "flipperx";
+    private static final String[] FINISH_SUGGESTIONS = {"45min", "1h", "2h", "25m", "100m", "off"};
 
     private AssistCommand() {}
 
@@ -43,6 +44,22 @@ public final class AssistCommand {
                             AssistClient.get().goal(StringArgumentType.getString(ctx, "text"));
                             return 1;
                         })))
+                .then(ClientCommands.literal("finish")
+                        .executes(ctx -> {
+                            AssistClient.get().finish("", false);
+                            return 1;
+                        })
+                        .then(ClientCommands.argument("text", StringArgumentType.greedyString())
+                                .suggests((ctx, builder) -> {
+                                    for (String s : FINISH_SUGGESTIONS) {
+                                        if (s.startsWith(builder.getRemainingLowerCase())) builder.suggest(s);
+                                    }
+                                    return builder.buildFuture();
+                                })
+                                .executes(ctx -> {
+                                    AssistClient.get().finish(StringArgumentType.getString(ctx, "text"), false);
+                                    return 1;
+                                })))
                 .then(ClientCommands.literal("update").executes(ctx -> {
                     AssistClient.get().update();
                     return 1;

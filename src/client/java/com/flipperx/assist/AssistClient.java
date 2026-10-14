@@ -45,6 +45,8 @@ import net.minecraft.world.entity.player.Inventory;
 
 
 import java.net.URI;
+import java.time.Instant;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -820,6 +822,7 @@ public class AssistClient implements ClientModInitializer {
         o.addProperty("mc_username", mc.getUser() == null ? "" : mc.getUser().getName());
         o.addProperty("version", VersionCheck.current());
         o.addProperty("install", config.install());
+        o.addProperty("utc_offset_min", utcOffsetMinutes());
         socket.send(o);
         STATE.status("Authenticating...");
         authAt = System.currentTimeMillis();
@@ -875,20 +878,52 @@ public class AssistClient implements ClientModInitializer {
     }
 
     private void start(boolean announce) {
-        if (STATE.running()) return;
+        if (STATE.running()) {
+            if (announce && STATE.finishing()) finish("off", false);
+            return;
+        }
         if (!STATE.linked() || !socket.connected()) {
             chat("§e" + STATE.status());
             return;
         }
         JsonObject o = new JsonObject();
         o.addProperty("type", "start");
+        o.addProperty("utc_offset_min", utcOffsetMinutes());
+        if (!announce) o.addProperty("resume", true);
         socket.send(o);
+        startedLocally();
+        if (announce) chat("§aOn. Do what the panel says; it never clicks for you.");
+    }
+
+    private void startedLocally() {
         STATE.step(AssistState.Step.NONE);
         STATE.running(true);
         forceReport = true;
         discardStep = reports.waiting();
         prefetch = null;
-        if (announce) chat("§aOn. Do what the panel says; it never clicks for you.");
+    }
+
+    public void finish(String text, boolean fromButton) {
+        if (!Location.skyBlock()) {
+            chat("Join SkyBlock first.");
+            return;
+        }
+        if (!STATE.linked() || !socket.connected()) {
+            chat("§e" + STATE.status());
+            return;
+        }
+        String value = text == null ? "" : text.trim();
+        JsonObject o = new JsonObject();
+        o.addProperty("type", "finish");
+        o.addProperty("text", value);
+        o.addProperty("utc_offset_min", utcOffsetMinutes());
+        if (fromButton) o.addProperty("source", "button");
+        socket.send(o);
+        forceReport = true;
+    }
+
+    private static int utcOffsetMinutes() {
+        return ZoneId.systemDefault().getRules().getOffset(Instant.now()).getTotalSeconds() / 60;
     }
 
     public void stop() {
@@ -964,6 +999,7 @@ public class AssistClient implements ClientModInitializer {
         chat("§e/flipperx hud reset §7restore the panel position");
         chat("§e/flipperx settings §7slot highlight and Tab fill");
         chat("§e/flipperx goal 500m Hyperion §7save toward something   §e/flipperx goal clear §7drop it");
+        chat("§e/flipperx finish 45min §7or §e25m §7sell everything off by then   §e/flipperx finish §7now");
         chat("§e/flipperx summary §7the last session again");
         chat("§e/flipperx update §7download the latest version");
         chat("§e/flipperx stop §7or §e[ §7pause   §e/flipperx logout §7unlink");

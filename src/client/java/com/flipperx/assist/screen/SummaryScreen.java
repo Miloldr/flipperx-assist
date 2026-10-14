@@ -41,11 +41,13 @@ public final class SummaryScreen extends Screen {
     private int cardX0, cardY0, cardX1, cardY1;
     private int closeX0, closeY0, closeX1, closeY1;
     private int shareX0, shareY0, shareX1, shareY1;
+    private int sellX0, sellY0, sellX1, sellY1;
     private long copiedAt;
     private static final long COPIED_MS = 2500;
     private static final String SHARE = "Replay & Share";
     private static final int GLOW_SESSIONS = 3;
     private boolean glow;
+    private boolean sellInline;
     private static final String[] HINTS = {
             "Esc or any movement key closes this", "Esc or moving closes this", "Esc closes this"};
     private float a = 1f;
@@ -93,6 +95,8 @@ public final class SummaryScreen extends Screen {
         int inner = w - PAD * 2;
         List<FormattedCharSequence> held = s.held() == null ? List.of()
                 : f.split(Component.literal(s.held()), inner);
+        int sellW = s.sellOff() == null ? 0 : f.width(s.sellOff()) + 20;
+        sellInline = s.sellOff() != null && held.size() == 1 && f.width(held.get(0)) + 8 + sellW <= inner;
         chartH = CHART_H;
         int h = height(held.size());
         if (h > height - 16) {
@@ -167,6 +171,22 @@ public final class SummaryScreen extends Screen {
 
         if (s.speed() != null) y = speed(g, f, s.speed(), left, right, y, t);
 
+        if (s.sellOff() != null) {
+            if (sellInline) {
+                int ty = y + (BUTTON_H - 7) / 2;
+                g.text(f, held.get(0), left, ty, color(AssistHud.TEXT), false);
+                sellButton(g, f, right - sellW, y, right, mouseX, mouseY);
+                y += BUTTON_H;
+            } else {
+                for (FormattedCharSequence line : held) {
+                    g.text(f, line, left, y, color(AssistHud.TEXT), false);
+                    y += LINE;
+                }
+                y += 4;
+                sellButton(g, f, right - sellW, y, right, mouseX, mouseY);
+                y += BUTTON_H;
+            }
+        } else
         for (FormattedCharSequence line : held) {
             g.text(f, line, left, y, color(AssistHud.DIM), false);
             y += LINE;
@@ -203,6 +223,16 @@ public final class SummaryScreen extends Screen {
                 break;
             }
         }
+    }
+
+    private void sellButton(GuiGraphicsExtractor g, Font f, int x0, int y0, int x1, int mouseX, int mouseY) {
+        int y1 = y0 + BUTTON_H;
+        sellX0 = x0; sellY0 = y0; sellX1 = x1; sellY1 = y1;
+        int textY = y0 + (BUTTON_H - 7) / 2;
+        boolean hover = mouseX >= x0 && mouseX < x1 && mouseY >= y0 && mouseY < y1;
+        g.fill(x0, y0, x1, y1, color(hover ? 0x2E2E2E : BUTTON));
+        box(g, x0, y0, x1, y1, color(AssistHud.AMBER));
+        g.text(f, s.sellOff(), x0 + (x1 - x0 - f.width(s.sellOff())) / 2, textY, color(AssistHud.AMBER), false);
     }
 
     private void button(GuiGraphicsExtractor g, Font f, String label, int x0, int y0, int x1, int y1, int textY,
@@ -288,6 +318,7 @@ public final class SummaryScreen extends Screen {
         if (s.best() != null) h += 16 + 6;
         if (s.goal() != null) h += LINE + 3 + 8;
         h += heldLines * LINE;
+        if (s.sellOff() != null) h += sellInline ? BUTTON_H - LINE : BUTTON_H + 4;
         if (heldLines > 0) h += 4;
         h += speedHeight();
         h += 3 + 1 + FOOT_GAP + BUTTON_H;
@@ -402,6 +433,12 @@ public final class SummaryScreen extends Screen {
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubled) {
         double mx = event.x(), my = event.y();
+        if (s.sellOff() != null && mx >= sellX0 && mx < sellX1 && my >= sellY0 && my < sellY1) {
+            AssistClient client = AssistClient.get();
+            if (client != null) client.finish("", true);
+            onClose();
+            return true;
+        }
         if (s.shareUrl() != null && mx >= shareX0 && mx < shareX1 && my >= shareY0 && my < shareY1) {
             AssistClient client = AssistClient.get();
             if (client != null) client.shareSummary(s.shareUrl(), s.shareId());

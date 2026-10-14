@@ -61,6 +61,8 @@ public final class AssistState {
     private volatile Goal goal = null;
     public record Limit(double used, double cap, double left, Double hoursLeft) {}
     private volatile Limit limit = null;
+    public record Finish(String label, String right, double solid, double light, boolean time) {}
+    private volatile Finish finish = null;
     private volatile String cookieWarning = null;
     private volatile String notice = null;
     private volatile long noticeUntil = 0;
@@ -120,6 +122,7 @@ public final class AssistState {
         profitPerHour = null;
         goal = null;
         limit = null;
+        finish = null;
         cookieWarning = null;
         notice = null;
     }
@@ -131,6 +134,8 @@ public final class AssistState {
     public Double profitPerHour() { return profitPerHour; }
     public Goal goal() { return goal; }
     public Limit limit() { return limit; }
+    public Finish finish() { return finish; }
+    public boolean finishing() { return running && finish != null; }
     public String cookieWarning() { return cookieWarning; }
 
     public void hud(JsonObject hud) {
@@ -154,6 +159,16 @@ public final class AssistState {
                     g.get("target").getAsDouble(),
                     g.has("progress") ? g.get("progress").getAsDouble() : 0,
                     g.has("eta_hours") && !g.get("eta_hours").isJsonNull() ? g.get("eta_hours").getAsDouble() : null);
+        }
+        this.finish = null;
+        if (hud.has("finish") && hud.get("finish").isJsonObject()) {
+            JsonObject f = hud.getAsJsonObject("finish");
+            this.finish = new Finish(
+                    f.has("label") && !f.get("label").isJsonNull() ? f.get("label").getAsString() : "",
+                    f.has("right") && !f.get("right").isJsonNull() ? f.get("right").getAsString() : "",
+                    f.has("solid") ? f.get("solid").getAsDouble() : 0,
+                    f.has("light") ? f.get("light").getAsDouble() : 0,
+                    f.has("time") && f.get("time").getAsBoolean());
         }
         this.limit = null;
         if (hud.has("limit") && hud.get("limit").isJsonObject()) {

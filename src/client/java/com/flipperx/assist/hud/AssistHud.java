@@ -28,6 +28,7 @@ public final class AssistHud {
     private static final int MAX_WIDTH = 280;
     private static final int GOAL_BAR = 4;
     private static final int LIMIT_BAR = 3;
+    private static final int ROW_GAP = 6;
 
     private static final int BG = 0x121212;
     private static final float BG_ALPHA = 0xD0 / 255f;
@@ -37,6 +38,7 @@ public final class AssistHud {
     public static final int DIM = 0x8A8A8A;
     public static final int WARN = 0xD9534F;
     private static final int TRACK = 0x2A2A2A;
+    private static final int LIGHT = mix(TRACK, AMBER, 0.42f);
 
     private static final float FADE_MS = 180f;
     private static final float NOTICE_FADE_MS = 400f;
@@ -64,6 +66,7 @@ public final class AssistHud {
     private static double shownProfit = Double.NaN, countFrom, countTo;
     private static long countAt, glowAt;
     private static float goalShown = -1f;
+    private static float finishSolid = -1f, finishLight = -1f;
     private static float limitShown = -1f;
     private static double delta;
     private static long deltaAt;
@@ -120,10 +123,14 @@ public final class AssistHud {
         AssistState.Goal goal = state.linked() ? state.goal() : null;
         AssistState.Limit limit = state.linked() ? state.limit() : null;
         if (limit == null) limitShown = -1f;
+        AssistState.Finish finish = state.linked() && running ? state.finish() : null;
+        if (finish == null) finishSolid = finishLight = -1f;
+        int bars = (finish != null ? 1 : 0) + (limit != null ? 1 : 0) + (goal != null ? 1 : 0);
 
         int titleHeight = Math.max(iconSpace ? 16 : LINE, titles.size() * LINE);
-        int footHeight = (money ? LINE : 0) + (limit != null ? LINE + LIMIT_BAR : 0)
-                + (goal != null ? LINE + GOAL_BAR : 0);
+        int footHeight = (money ? LINE : 0) + (finish != null ? LINE + GOAL_BAR : 0)
+                + (limit != null ? LINE + LIMIT_BAR : 0) + (goal != null ? LINE + GOAL_BAR : 0)
+                + Math.max(0, bars - 1) * ROW_GAP;
         int targetHeight = PAD * 2 + titleHeight + lines.size() * LINE + footHeight;
 
         int[] anchor = anchor(g, cfg, width, targetHeight);
@@ -181,11 +188,20 @@ public final class AssistHud {
             drawMoney(g, mc.font, state, x + PAD, x + width - PAD, cursor, now);
             cursor += LINE;
         }
+        boolean barAbove = false;
+        if (finish != null) {
+            drawFinish(g, mc.font, finish, x + PAD, x + width - PAD, cursor, dt);
+            cursor += LINE + GOAL_BAR;
+            barAbove = true;
+        }
         if (limit != null) {
+            if (barAbove) cursor += ROW_GAP;
             drawLimit(g, mc.font, limit, x + PAD, x + width - PAD, cursor, dt);
             cursor += LINE + LIMIT_BAR;
+            barAbove = true;
         }
         if (goal != null) {
+            if (barAbove) cursor += ROW_GAP;
             drawGoal(g, mc.font, goal, x + PAD, x + width - PAD, cursor, dt);
         }
         g.disableScissor();
@@ -244,6 +260,32 @@ public final class AssistHud {
         if (filled > 0) g.fill(left, bar, left + filled, bar + 2, argb(AMBER, dim));
         goalX = left + filled;
         goalY = bar;
+    }
+
+    private static void drawFinish(GuiGraphicsExtractor g, Font font, AssistState.Finish finish, int left, int right,
+                                   int top, float dt) {
+        float solid = (float) Math.clamp(finish.solid(), 0.0, 1.0);
+        float light = (float) Math.clamp(Math.max(finish.light(), finish.solid()), 0.0, 1.0);
+        if (finishSolid < 0) { finishSolid = solid; finishLight = light; }
+        float k = approach(dt, GOAL_TAU_MS);
+        finishSolid += (solid - finishSolid) * k;
+        finishLight += (light - finishLight) * k;
+        g.text(font, finish.label(), left, top, argb(TEXT, dim), false);
+        if (!finish.right().isEmpty()) {
+            g.text(font, finish.right(), right - font.width(finish.right()), top, argb(DIM, dim), false);
+        }
+        int bar = top + LINE;
+        g.fill(left, bar, right, bar + 2, argb(TRACK, dim));
+        int span = right - left;
+        if (finish.time()) {
+            int used = Math.round(span * finishSolid);
+            if (used > 0) g.fill(left, bar, left + used, bar + 2, argb(DIM, dim));
+            return;
+        }
+        int lit = Math.round(span * finishLight);
+        if (lit > 0) g.fill(left, bar, left + lit, bar + 2, argb(LIGHT, dim));
+        int sold = Math.round(span * finishSolid);
+        if (sold > 0) g.fill(left, bar, left + sold, bar + 2, argb(AMBER, dim));
     }
 
     private static void drawLimit(GuiGraphicsExtractor g, Font font, AssistState.Limit limit, int left, int right,
@@ -363,14 +405,14 @@ public final class AssistHud {
     }
 
     public static String hours(double h) {
-        if (h < 1) return Math.max(1, Math.round(h * 60)) + "m";
+        if (h < 1) return Math.max(1, Math.round(h * 60)) + "min";
         return Math.round(h) + "h";
     }
 
     public static String duration(double h) {
         long m = Math.max(1, Math.round(h * 60));
-        if (m < 60) return m + "m";
-        return m % 60 == 0 ? m / 60 + "h" : m / 60 + "h " + m % 60 + "m";
+        if (m < 60) return m + "min";
+        return m % 60 == 0 ? m / 60 + "h" : m / 60 + "h " + m % 60 + "min";
     }
 
     public static float approach(float dtMs, float tauMs) {

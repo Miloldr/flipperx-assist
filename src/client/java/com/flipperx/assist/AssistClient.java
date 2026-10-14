@@ -2,6 +2,7 @@ package com.flipperx.assist;
 
 import com.flipperx.assist.commands.AssistCommand;
 import com.flipperx.assist.config.ModConfig;
+import com.flipperx.assist.game.Compat;
 import com.flipperx.assist.game.GameUtil;
 import com.flipperx.assist.game.Location;
 import com.flipperx.assist.game.ScreenReader;
@@ -18,7 +19,6 @@ import com.flipperx.assist.screen.SummaryScreen;
 import com.flipperx.assist.update.Updater;
 import com.google.gson.JsonObject;
 
-import com.mojang.blaze3d.platform.InputConstants;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
@@ -29,6 +29,7 @@ import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 
 import net.minecraft.client.KeyMapping;
+import net.minecraft.client.gui.components.ChatComponent;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.ConfirmScreen;
@@ -42,7 +43,6 @@ import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.player.Inventory;
 
-import org.lwjgl.glfw.GLFW;
 
 import java.net.URI;
 import java.util.ArrayList;
@@ -140,13 +140,13 @@ public class AssistClient implements ClientModInitializer {
         KeyMapping.Category category = KeyMapping.Category.register(
                 Identifier.fromNamespaceAndPath("bzassist", "general"));
         startKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                "key.bzassist.start", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_RIGHT_BRACKET,
+                "key.bzassist.start", Compat.keyboard(), Compat.KEY_RBRACKET,
                 category));
         stopKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                "key.bzassist.stop", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_LEFT_BRACKET,
+                "key.bzassist.stop", Compat.keyboard(), Compat.KEY_LBRACKET,
                 category));
         commandKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                "key.bzassist.command", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_B,
+                "key.bzassist.command", Compat.keyboard(), Compat.KEY_B,
                 category));
 
         HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("bzassist", "panel"),
@@ -471,7 +471,7 @@ public class AssistClient implements ClientModInitializer {
 
     private ConfirmScreen confirmTurnOn(String name, String what, String onLine, Runnable enable) {
         return new ConfirmScreen(yes -> {
-            Minecraft.getInstance().gui.setScreen(null);
+            Compat.setScreen(null);
             if (yes) {
                 enable.run();
                 config.save();
@@ -492,12 +492,12 @@ public class AssistClient implements ClientModInitializer {
     private void maybeOpenSettings(Minecraft client) {
         if (!settingsPending || GameUtil.currentScreen() != null) return;
         settingsPending = false;
-        client.gui.setScreen(new SettingsScreen());
+        Compat.setScreen(new SettingsScreen());
     }
 
     private void maybeConfirm(Minecraft client) {
         if (pendingConfirm == null || GameUtil.currentScreen() != null) return;
-        client.gui.setScreen(pendingConfirm);
+        Compat.setScreen(pendingConfirm);
         pendingConfirm = null;
     }
 
@@ -536,7 +536,7 @@ public class AssistClient implements ClientModInitializer {
         }
         if (GameUtil.currentScreen() != null) return;
         summaryOpenUntil = 0;
-        Minecraft.getInstance().gui.setScreen(new SummaryScreen(lastSummary));
+        Compat.setScreen(new SummaryScreen(lastSummary));
     }
 
     private void maybeReport() {
@@ -982,18 +982,16 @@ public class AssistClient implements ClientModInitializer {
     private static void raw(Component line) {
         Minecraft mc = Minecraft.getInstance();
         mc.execute(() -> {
-            if (mc.gui != null && mc.gui.hud != null) {
-                mc.gui.hud.getChat().addClientSystemMessage(line);
-            }
+            ChatComponent chat = Compat.chat();
+            if (chat != null) chat.addClientSystemMessage(line);
         });
     }
 
     private static void chat(Component body) {
         Minecraft mc = Minecraft.getInstance();
         mc.execute(() -> {
-            if (mc.gui != null && mc.gui.hud != null) {
-                mc.gui.hud.getChat().addClientSystemMessage(Chat.line(body));
-            }
+            ChatComponent chat = Compat.chat();
+            if (chat != null) chat.addClientSystemMessage(Chat.line(body));
         });
     }
 

@@ -4,6 +4,7 @@ import com.flipperx.assist.AssistClient;
 import com.flipperx.assist.AssistState;
 import com.flipperx.assist.AssistState.Step;
 import com.flipperx.assist.config.ModConfig;
+import com.flipperx.assist.game.Compat;
 import com.flipperx.assist.game.GameUtil;
 import com.flipperx.assist.game.Location;
 import com.flipperx.assist.mixin.AbstractContainerScreenAccessor;
@@ -26,6 +27,7 @@ public final class AssistHud {
     private static final int LINE = 11;
     private static final int MAX_WIDTH = 280;
     private static final int GOAL_BAR = 4;
+    private static final int LIMIT_BAR = 3;
 
     private static final int BG = 0x121212;
     private static final float BG_ALPHA = 0xD0 / 255f;
@@ -62,6 +64,7 @@ public final class AssistHud {
     private static double shownProfit = Double.NaN, countFrom, countTo;
     private static long countAt, glowAt;
     private static float goalShown = -1f;
+    private static float limitShown = -1f;
     private static double delta;
     private static long deltaAt;
 
@@ -69,7 +72,7 @@ public final class AssistHud {
 
     public static void render(GuiGraphicsExtractor g, AssistState state) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.gui.hud.isHidden() || !Location.skyBlock()) {
+        if (Compat.hudHidden() || !Location.skyBlock()) {
             drawnHeight = 0;
             moneyX = goalX = Float.NaN;
             return;
@@ -115,9 +118,12 @@ public final class AssistHud {
 
         boolean money = state.linked() && (state.profit() != 0 || running);
         AssistState.Goal goal = state.linked() ? state.goal() : null;
+        AssistState.Limit limit = state.linked() ? state.limit() : null;
+        if (limit == null) limitShown = -1f;
 
         int titleHeight = Math.max(iconSpace ? 16 : LINE, titles.size() * LINE);
-        int footHeight = (money ? LINE : 0) + (goal != null ? LINE + GOAL_BAR : 0);
+        int footHeight = (money ? LINE : 0) + (limit != null ? LINE + LIMIT_BAR : 0)
+                + (goal != null ? LINE + GOAL_BAR : 0);
         int targetHeight = PAD * 2 + titleHeight + lines.size() * LINE + footHeight;
 
         int[] anchor = anchor(g, cfg, width, targetHeight);
@@ -174,6 +180,10 @@ public final class AssistHud {
         if (money) {
             drawMoney(g, mc.font, state, x + PAD, x + width - PAD, cursor, now);
             cursor += LINE;
+        }
+        if (limit != null) {
+            drawLimit(g, mc.font, limit, x + PAD, x + width - PAD, cursor, dt);
+            cursor += LINE + LIMIT_BAR;
         }
         if (goal != null) {
             drawGoal(g, mc.font, goal, x + PAD, x + width - PAD, cursor, dt);
@@ -234,6 +244,22 @@ public final class AssistHud {
         if (filled > 0) g.fill(left, bar, left + filled, bar + 2, argb(AMBER, dim));
         goalX = left + filled;
         goalY = bar;
+    }
+
+    private static void drawLimit(GuiGraphicsExtractor g, Font font, AssistState.Limit limit, int left, int right,
+                                  int top, float dt) {
+        float frac = limit.cap() > 0 ? (float) Math.clamp(limit.used() / limit.cap(), 0.0, 1.0) : 0f;
+        if (limitShown < 0) limitShown = frac;
+        limitShown += (frac - limitShown) * approach(dt, GOAL_TAU_MS);
+        String r = limit.hoursLeft() != null
+                ? compact(limit.left()) + " left, out in about " + duration(limit.hoursLeft())
+                : "about " + compact(limit.left()) + " left";
+        g.text(font, "Daily limit", left, top, argb(TEXT, dim), false);
+        g.text(font, r, right - font.width(r), top, argb(DIM, dim), false);
+        int bar = top + LINE - 1;
+        g.fill(left, bar, right, bar + 1, argb(TRACK, dim));
+        int filled = Math.round((right - left) * limitShown);
+        if (filled > 0) g.fill(left, bar, left + filled, bar + 1, argb(DIM, dim));
     }
 
     public static float[] moneyAnchor() {
@@ -341,6 +367,12 @@ public final class AssistHud {
         return Math.round(h) + "h";
     }
 
+    public static String duration(double h) {
+        long m = Math.max(1, Math.round(h * 60));
+        if (m < 60) return m + "m";
+        return m % 60 == 0 ? m / 60 + "h" : m / 60 + "h " + m % 60 + "m";
+    }
+
     public static float approach(float dtMs, float tauMs) {
         return 1f - (float) Math.exp(-dtMs / tauMs);
     }
@@ -372,7 +404,7 @@ public final class AssistHud {
 
     public static boolean mouseClicked(double mouseX, double mouseY, int guiWidth) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || mc.gui.hud.isHidden() || drawnHeight == 0
+        if (mc.player == null || Compat.hudHidden() || drawnHeight == 0
                 || drawnScreen != GameUtil.currentScreen()) return false;
         if (mouseX < drawnX || mouseX >= drawnX + drawnWidth
                 || mouseY < drawnY || mouseY >= drawnY + drawnHeight) return false;

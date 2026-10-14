@@ -59,6 +59,8 @@ public final class AssistState {
     private volatile Double profitPerHour = null;
     public record Goal(String label, double target, double progress, Double etaHours) {}
     private volatile Goal goal = null;
+    public record Limit(double used, double cap, double left, Double hoursLeft) {}
+    private volatile Limit limit = null;
     private volatile String cookieWarning = null;
     private volatile String notice = null;
     private volatile long noticeUntil = 0;
@@ -117,6 +119,7 @@ public final class AssistState {
         profit = 0;
         profitPerHour = null;
         goal = null;
+        limit = null;
         cookieWarning = null;
         notice = null;
     }
@@ -127,6 +130,7 @@ public final class AssistState {
     public double profit() { return profit; }
     public Double profitPerHour() { return profitPerHour; }
     public Goal goal() { return goal; }
+    public Limit limit() { return limit; }
     public String cookieWarning() { return cookieWarning; }
 
     public void hud(JsonObject hud) {
@@ -150,6 +154,15 @@ public final class AssistState {
                     g.get("target").getAsDouble(),
                     g.has("progress") ? g.get("progress").getAsDouble() : 0,
                     g.has("eta_hours") && !g.get("eta_hours").isJsonNull() ? g.get("eta_hours").getAsDouble() : null);
+        }
+        this.limit = null;
+        if (hud.has("limit") && hud.get("limit").isJsonObject()) {
+            JsonObject l = hud.getAsJsonObject("limit");
+            this.limit = new Limit(
+                    l.get("used").getAsDouble(),
+                    l.get("cap").getAsDouble(),
+                    l.get("left").getAsDouble(),
+                    l.has("hours_left") && !l.get("hours_left").isJsonNull() ? l.get("hours_left").getAsDouble() : null);
         }
     }
 

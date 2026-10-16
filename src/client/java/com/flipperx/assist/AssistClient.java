@@ -98,6 +98,11 @@ public class AssistClient implements ClientModInitializer {
     private Map<Integer, String> reportedSlotNames = new HashMap<>();
     private boolean forceReport;
     private boolean discardStep;
+    private final AtomicBoolean flushQueued = new AtomicBoolean();
+    private int lastShape;
+    private long shapeSince;
+    private long recheckAt;
+    private String lastMenuTitle = "";
     private Prefetch prefetch;
     private static final long PREFETCH_TTL_MS = 15_000;
 
@@ -131,6 +136,15 @@ public class AssistClient implements ClientModInitializer {
 
     public static AssistState state() {
         return STATE;
+    }
+
+    public static void menuChanged() {
+        AssistClient client = instance;
+        if (client == null || !client.flushQueued.compareAndSet(false, true)) return;
+        Minecraft.getInstance().execute(() -> {
+            client.flushQueued.set(false);
+            if (Minecraft.getInstance().player != null) client.maybeReport();
+        });
     }
 
     @Override
@@ -464,9 +478,9 @@ public class AssistClient implements ClientModInitializer {
             return;
         }
         pendingConfirm = confirmTurnOn("Autosign",
-                "When a sign asks for an amount, the amount on the panel will be typed in for you. "
+                "When a sign asks for an amount or a search, what the panel says will be typed in for you. "
                         + "You still close the sign yourself.",
-                "Autosign is on. When a sign asks for an amount, it gets typed in for you. "
+                "Autosign is on. Amounts and searches on signs get typed in for you. "
                         + "You still close the sign yourself.",
                 () -> config.autosign = true);
     }
@@ -507,8 +521,8 @@ public class AssistClient implements ClientModInitializer {
         if (!config.autosign || !STATE.running() || !STATE.current()) return;
         if (!(GameUtil.currentScreen() instanceof AbstractSignEditScreen screen)) return;
         AssistState.Step step = STATE.step();
-        String amount = step.text();
-        if (!step.isSign() || amount.isEmpty() || !amount.chars().allMatch(Character::isDigit)) return;
+        String text = step.text();
+        if (!step.isSign() || text.isEmpty()) return;
         int context = screenContext();
         if (context == filledSign || context != acceptedContext) return;
         filledSign = context;
@@ -519,7 +533,7 @@ public class AssistClient implements ClientModInitializer {
         var field = sign.bzassist$getSignField();
         if (field == null) return;
         field.selectAll();
-        field.insertText(amount);
+        field.insertText(text);
     }
 
     public void loginReminders(boolean on) {
@@ -544,6 +558,7 @@ public class AssistClient implements ClientModInitializer {
     private void maybeReport() {
         if (!STATE.linked() || !authSent || !socket.connected()) return;
         long now = System.currentTimeMillis();
+        noteShape(now);
         maybePrefetch();
         int hash = screenHash();
         boolean changed = hash != lastScreenHash;
@@ -551,7 +566,11 @@ public class AssistClient implements ClientModInitializer {
         if (shown.isClick()) STATE.current(targetMatches(shown, acceptedSlotName));
         boolean pipelined = reports.waiting();
         if (pipelined && now - lastTickAt > 30_000) socket.close();
-        if (reports.holds(changed, screenContext() == reportedContext)) return;
+        if (recheckAt > 0 && now >= recheckAt) {
+            recheckAt = 0;
+            forceReport = true;
+        }
+        if (reports.holds(changed)) return;
         if (!forceReport && !changed && now - lastTickAt < tickEveryMs) return;
         int context = screenContext();
         Map<Integer, String> names = new HashMap<>();
@@ -560,6 +579,7 @@ public class AssistClient implements ClientModInitializer {
             names.put(slot.index, GameUtil.rawName(slot.getItem()));
         }
         JsonObject tick = ScreenReader.tick();
+        tick.addProperty("quiet_ms", Math.max(0, now - shapeSince));
         long seq = reports.next();
         if (reports.numbered()) {
             tick.addProperty("seq", seq);
@@ -572,6 +592,46 @@ public class AssistClient implements ClientModInitializer {
         reportedContext = context;
         reportedSlotNames = names;
         reports.sent(seq, context);
+    }
+
+    private void noteShape(long now) {
+        int shape = shapeHash();
+        if (shape != lastShape) {
+            lastShape = shape;
+            shapeSince = now;
+        }
+        Screen screen = GameUtil.currentScreen();
+        if (GameUtil.handler() != null && !(screen instanceof AbstractSignEditScreen)) {
+            lastMenuTitle = GameUtil.screenTitle().toLowerCase(Locale.ROOT);
+        }
+    }
+
+    private int shapeHash() {
+        var menu = GameUtil.handler();
+        if (menu == null) {
+            Screen screen = GameUtil.currentScreen();
+            return 31 * System.identityHashCode(screen) + GameUtil.screenTitle().hashCode();
+        }
+        int h = 31 * GameUtil.screenTitle().hashCode() + menu.containerId;
+        for (var slot : menu.slots) {
+            var st = slot.getItem();
+            if (st == null || st.isEmpty()) continue;
+            h = h * 31 + slot.index;
+            h = h * 31 + GameUtil.rawName(st).hashCode();
+        }
+        return h;
+    }
+
+    private void showEarly(JsonObject msg, int answered) {
+        if (answered == 0 || answered != screenContext()) return;
+        if (msg.has("pending") && msg.get("pending").getAsBoolean()) return;
+        AssistState.Step incoming = AssistState.Step.from(msg);
+        if (!incoming.isPlayers()) return;
+        String name = reportedSlotNames.get(incoming.slot());
+        if (!targetMatches(incoming, name)) return;
+        STATE.receiveStep(incoming, false);
+        acceptedContext = answered;
+        acceptedSlotName = name;
     }
 
     private void notePrefetch(JsonObject msg, int from, boolean replace) {
@@ -628,7 +688,7 @@ public class AssistClient implements ClientModInitializer {
         } else if (screen == null) {
             return;
         } else if ("sign".equals(t.on())) {
-            if (!(screen instanceof AbstractSignEditScreen)) {
+            if (!(screen instanceof AbstractSignEditScreen) || !titleMatches(t, lastMenuTitle)) {
                 prefetch = null;
                 return;
             }
@@ -660,8 +720,11 @@ public class AssistClient implements ClientModInitializer {
     }
 
     private static boolean titleMatches(Target t) {
+        return titleMatches(t, GameUtil.screenTitle().toLowerCase(Locale.ROOT));
+    }
+
+    private static boolean titleMatches(Target t, String title) {
         if (t.title().isEmpty()) return true;
-        String title = GameUtil.screenTitle().toLowerCase(Locale.ROOT);
         return t.prefix() ? title.startsWith(t.title()) : title.equals(t.title());
     }
 
@@ -757,7 +820,10 @@ public class AssistClient implements ClientModInitializer {
                 long seq = msg.has("seq") && !msg.get("seq").isJsonNull() ? msg.get("seq").getAsLong() : -1;
                 int answered = reports.context(seq, reportedContext);
                 if (reports.stale(seq)) {
-                    if (!discardStep && STATE.running()) notePrefetch(msg, answered, false);
+                    if (!discardStep && STATE.running()) {
+                        notePrefetch(msg, answered, false);
+                        showEarly(msg, answered);
+                    }
                     return;
                 }
                 reports.answer(seq);
@@ -784,6 +850,9 @@ public class AssistClient implements ClientModInitializer {
                     return;
                 }
                 boolean pending = msg.has("pending") && msg.get("pending").getAsBoolean();
+                recheckAt = msg.has("again_ms") && !msg.get("again_ms").isJsonNull()
+                        ? System.currentTimeMillis() + Math.max(0, Math.min(5_000, msg.get("again_ms").getAsLong()))
+                        : 0;
                 STATE.receiveStep(incoming, pending);
                 acceptedContext = reportedContext;
                 acceptedSlotName = targetName;

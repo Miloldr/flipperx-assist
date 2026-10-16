@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 public final class Reports {
+    private static final int MAX_IN_FLIGHT = 4;
     private boolean numbered;
     private boolean waiting;
     private long sent;
@@ -34,9 +35,9 @@ public final class Reports {
         waiting = false;
     }
 
-    public boolean holds(boolean changed, boolean sameScreen) {
+    public boolean holds(boolean changed) {
         if (!waiting) return false;
-        return !changed || !numbered || sent - answered > 1 || sameScreen;
+        return !changed || !numbered || sent - answered >= MAX_IN_FLIGHT;
     }
 
     public long next() {

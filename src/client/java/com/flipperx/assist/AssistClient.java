@@ -42,6 +42,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.inventory.Slot;
 
 
 import java.net.URI;
@@ -104,11 +105,13 @@ public class AssistClient implements ClientModInitializer {
     private long shapeSince;
     private long recheckAt;
     private String lastMenuTitle = "";
+    private JsonObject clickToReport;
+    private String lastClickedName = "";
     private Prefetch prefetch;
     private static final long PREFETCH_TTL_MS = 15_000;
 
     private record Target(AssistState.Step step, String on, String title, boolean prefix,
-                          List<String> names, boolean inv) {}
+                          List<String> names, boolean inv, String after) {}
 
     private record Prefetch(Target target, int from, long until) {}
     private long authAt;
@@ -137,6 +140,20 @@ public class AssistClient implements ClientModInitializer {
 
     public static AssistState state() {
         return STATE;
+    }
+
+    public static void slotClicked(Slot slot) {
+        AssistClient client = instance;
+        if (client == null) return;
+        String raw = GameUtil.rawName(slot.getItem());
+        client.lastClickedName = GameUtil.strip(raw).trim();
+        JsonObject o = new JsonObject();
+        o.addProperty("slot", slot.index);
+        o.addProperty("name", raw);
+        o.addProperty("view_id", System.identityHashCode(GameUtil.currentScreen()));
+        client.clickToReport = o;
+        client.forceReport = true;
+        menuChanged();
     }
 
     public static void menuChanged() {
@@ -581,6 +598,7 @@ public class AssistClient implements ClientModInitializer {
         }
         JsonObject tick = ScreenReader.tick();
         tick.addProperty("quiet_ms", Math.max(0, now - shapeSince));
+        if (clickToReport != null) tick.add("clicked", clickToReport);
         long seq = reports.next();
         if (reports.numbered()) {
             tick.addProperty("seq", seq);
@@ -588,6 +606,7 @@ public class AssistClient implements ClientModInitializer {
         }
         if (!socket.send(tick)) return;
         forceReport = false;
+        clickToReport = null;
         lastScreenHash = hash;
         reportedShape = lastShape;
         lastTickAt = now;
@@ -665,7 +684,9 @@ public class AssistClient implements ClientModInitializer {
         String title = n.has("title") && !n.get("title").isJsonNull() ? n.get("title").getAsString() : "";
         boolean prefix = n.has("prefix") && n.get("prefix").getAsBoolean();
         boolean inv = n.has("inv") && n.get("inv").getAsBoolean();
-        return new Target(AssistState.Step.from(n), where, title.toLowerCase(Locale.ROOT), prefix, names, inv);
+        String after = n.has("after") && !n.get("after").isJsonNull() ? n.get("after").getAsString() : "";
+        return new Target(AssistState.Step.from(n), where, title.toLowerCase(Locale.ROOT), prefix, names, inv,
+                after);
     }
 
     private void maybePrefetch() {
@@ -695,7 +716,8 @@ public class AssistClient implements ClientModInitializer {
                 return;
             }
         } else {
-            if (screen instanceof AbstractSignEditScreen || !titleMatches(t)) {
+            if (screen instanceof AbstractSignEditScreen || !titleMatches(t)
+                    || (!t.after().isEmpty() && !t.after().equals(lastClickedName))) {
                 prefetch = null;
                 return;
             }

@@ -998,7 +998,7 @@ public class AssistClient implements ClientModInitializer {
         chat("§e/flipperx login §7link this account   §e/flipperx start §7or §e] §7begin");
         chat("§e/flipperx hud reset §7restore the panel position");
         chat("§e/flipperx settings §7slot highlight and Tab fill");
-        chat("§e/flipperx goal 500m Hyperion §7save toward something   §e/flipperx goal clear §7drop it");
+        chat("§e/flipperx goal 1b Hyperion §7save toward something   §e/flipperx goal clear §7drop it");
         chat("§e/flipperx finish 45min §7or §e25m §7sell everything off by then   §e/flipperx finish §7now");
         chat("§e/flipperx summary §7the last session again");
         chat("§e/flipperx update §7download the latest version");

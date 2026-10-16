@@ -35,9 +35,9 @@ public final class Reports {
         waiting = false;
     }
 
-    public boolean holds(boolean changed) {
+    public boolean holds(boolean changed, boolean reshaped) {
         if (!waiting) return false;
-        return !changed || !numbered || sent - answered >= MAX_IN_FLIGHT;
+        return !changed || !reshaped || !numbered || sent - answered >= MAX_IN_FLIGHT;
     }
 
     public long next() {

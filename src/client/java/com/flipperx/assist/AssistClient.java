@@ -100,6 +100,7 @@ public class AssistClient implements ClientModInitializer {
     private boolean discardStep;
     private final AtomicBoolean flushQueued = new AtomicBoolean();
     private int lastShape;
+    private int reportedShape;
     private long shapeSince;
     private long recheckAt;
     private String lastMenuTitle = "";
@@ -570,7 +571,7 @@ public class AssistClient implements ClientModInitializer {
             recheckAt = 0;
             forceReport = true;
         }
-        if (reports.holds(changed)) return;
+        if (reports.holds(changed, lastShape != reportedShape)) return;
         if (!forceReport && !changed && now - lastTickAt < tickEveryMs) return;
         int context = screenContext();
         Map<Integer, String> names = new HashMap<>();
@@ -588,6 +589,7 @@ public class AssistClient implements ClientModInitializer {
         if (!socket.send(tick)) return;
         forceReport = false;
         lastScreenHash = hash;
+        reportedShape = lastShape;
         lastTickAt = now;
         reportedContext = context;
         reportedSlotNames = names;

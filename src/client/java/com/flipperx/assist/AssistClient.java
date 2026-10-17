@@ -723,7 +723,14 @@ public class AssistClient implements ClientModInitializer {
             }
             var menu = GameUtil.handler();
             if (menu == null) return;
-            for (String want : t.names()) {
+            if (t.step().slot() >= 0) {
+                slot = t.step().slot();
+                name = "";
+                for (var s : menu.slots) {
+                    if (s.index == slot) name = GameUtil.rawName(s.getItem());
+                }
+            }
+            if (slot < 0) for (String want : t.names()) {
                 for (var s : menu.slots) {
                     if (s.getItem().isEmpty() || (t.inv() && !(s.container instanceof Inventory))) continue;
                     String raw = GameUtil.rawName(s.getItem());

@@ -125,10 +125,11 @@ public final class AssistHud {
         if (limit == null) limitShown = -1f;
         AssistState.Finish finish = state.linked() && running ? state.finish() : null;
         if (finish == null) finishSolid = finishLight = -1f;
+        List<AssistState.Row> rows = state.linked() ? state.rows() : List.of();
         int bars = (finish != null ? 1 : 0) + (limit != null ? 1 : 0) + (goal != null ? 1 : 0);
 
         int titleHeight = Math.max(iconSpace ? 16 : LINE, titles.size() * LINE);
-        int footHeight = (money ? LINE : 0) + (finish != null ? LINE + GOAL_BAR : 0)
+        int footHeight = (money ? LINE : 0) + rows.size() * LINE + (finish != null ? LINE + GOAL_BAR : 0)
                 + (limit != null ? LINE + LIMIT_BAR : 0) + (goal != null ? LINE + GOAL_BAR : 0)
                 + Math.max(0, bars - 1) * ROW_GAP;
         int targetHeight = PAD * 2 + titleHeight + lines.size() * LINE + footHeight;
@@ -188,6 +189,10 @@ public final class AssistHud {
             drawMoney(g, mc.font, state, x + PAD, x + width - PAD, cursor, now);
             cursor += LINE;
         }
+        for (AssistState.Row row : rows) {
+            drawRow(g, mc.font, row, x + PAD, x + width - PAD, cursor);
+            cursor += LINE;
+        }
         boolean barAbove = false;
         if (finish != null) {
             drawFinish(g, mc.font, finish, x + PAD, x + width - PAD, cursor, dt);
@@ -241,6 +246,16 @@ public final class AssistHud {
         Double rate = state.profitPerHour();
         String r = rate == null ? "this session" : compact(rate) + "/h";
         g.text(font, r, right - font.width(r), top, argb(DIM, dim), false);
+    }
+
+    private static void drawRow(GuiGraphicsExtractor g, Font font, AssistState.Row row, int left, int right,
+                                int top) {
+        String label = row.label().isEmpty() ? "" : row.label() + " ";
+        g.text(font, label, left, top, argb(DIM, dim), false);
+        g.text(font, row.value(), left + font.width(label), top, argb(TEXT, dim), false);
+        if (!row.right().isEmpty()) {
+            g.text(font, row.right(), right - font.width(row.right()), top, argb(DIM, dim), false);
+        }
     }
 
     private static void drawGoal(GuiGraphicsExtractor g, Font font, AssistState.Goal goal, int left, int right,

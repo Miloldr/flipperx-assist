@@ -63,6 +63,8 @@ public final class AssistState {
     private volatile Limit limit = null;
     public record Finish(String label, String right, double solid, double light, boolean time) {}
     private volatile Finish finish = null;
+    public record Row(String label, String value, String right) {}
+    private volatile java.util.List<Row> rows = java.util.List.of();
     private volatile String cookieWarning = null;
     private volatile String notice = null;
     private volatile long noticeUntil = 0;
@@ -123,6 +125,7 @@ public final class AssistState {
         goal = null;
         limit = null;
         finish = null;
+        rows = java.util.List.of();
         cookieWarning = null;
         notice = null;
     }
@@ -135,6 +138,7 @@ public final class AssistState {
     public Goal goal() { return goal; }
     public Limit limit() { return limit; }
     public Finish finish() { return finish; }
+    public java.util.List<Row> rows() { return rows; }
     public boolean finishing() { return running && finish != null; }
     public String cookieWarning() { return cookieWarning; }
 
@@ -170,6 +174,15 @@ public final class AssistState {
                     f.has("light") ? f.get("light").getAsDouble() : 0,
                     f.has("time") && f.get("time").getAsBoolean());
         }
+        java.util.List<Row> rows = new java.util.ArrayList<>();
+        if (hud.has("rows") && hud.get("rows").isJsonArray()) {
+            for (var e : hud.getAsJsonArray("rows")) {
+                if (!e.isJsonObject()) continue;
+                JsonObject r = e.getAsJsonObject();
+                rows.add(new Row(text(r, "label"), text(r, "value"), text(r, "right")));
+            }
+        }
+        this.rows = java.util.List.copyOf(rows);
         this.limit = null;
         if (hud.has("limit") && hud.get("limit").isJsonObject()) {
             JsonObject l = hud.getAsJsonObject("limit");
@@ -179,6 +192,10 @@ public final class AssistState {
                     l.get("left").getAsDouble(),
                     l.has("hours_left") && !l.get("hours_left").isJsonNull() ? l.get("hours_left").getAsDouble() : null);
         }
+    }
+
+    private static String text(JsonObject o, String key) {
+        return o.has(key) && !o.get(key).isJsonNull() ? o.get(key).getAsString() : "";
     }
 
     private static String cookieWarningFrom(JsonObject hud) {

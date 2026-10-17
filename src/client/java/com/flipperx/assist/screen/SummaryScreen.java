@@ -1,7 +1,9 @@
 package com.flipperx.assist.screen;
 
 import com.flipperx.assist.AssistClient;
+import com.flipperx.assist.Chat;
 import com.flipperx.assist.config.ModConfig;
+import com.flipperx.assist.game.Compat;
 import com.flipperx.assist.hud.AssistHud;
 import com.flipperx.assist.hud.ItemIcon;
 
@@ -9,12 +11,16 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;
 import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.components.ChatComponent;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.util.FormattedCharSequence;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
 
@@ -42,9 +48,16 @@ public final class SummaryScreen extends Screen {
     private int closeX0, closeY0, closeX1, closeY1;
     private int shareX0, shareY0, shareX1, shareY1;
     private int sellX0, sellY0, sellX1, sellY1;
+    private int shotX0, shotY0, shotX1, shotY1;
+    private boolean shotShown;
+    private int shotStage;
+    private long shotAt;
+    private Snapshot.Saved shot;
     private long copiedAt;
     private static final long COPIED_MS = 2500;
+    private static final long SAVED_MS = 6000;
     private static final String SHARE = "Replay & Share";
+    private static final String SCREENSHOT = "Screenshot";
     private static final int GLOW_SESSIONS = 3;
     private boolean glow;
     private boolean sellInline;
@@ -88,6 +101,11 @@ public final class SummaryScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
+        if (shotStage > 0) {
+            mouseX = -1;
+            mouseY = -1;
+            if (shotStage == 1) shotStage = 2;
+        }
         long t = System.currentTimeMillis() - openedAt;
         a = appear();
         Font f = font;
@@ -216,6 +234,23 @@ public final class SummaryScreen extends Screen {
                 }
             }
             buttonsLeft = shareX0;
+        }
+        long sinceShot = System.currentTimeMillis() - shotAt;
+        String shotLabel = sinceShot >= COPIED_MS ? SCREENSHOT : shot == null ? "Failed" : "Saved";
+        shotX1 = buttonsLeft - 4; shotX0 = shotX1 - f.width(SCREENSHOT) - 20;
+        shotY0 = closeY0; shotY1 = closeY1;
+        shotShown = shotX0 >= left;
+        if (shotShown) {
+            button(g, f, shotLabel, shotX0, shotY0, shotX1, shotY1, textY, mouseX, mouseY);
+            buttonsLeft = shotX0;
+        }
+        if (sinceShot < SAVED_MS) {
+            String where = shot == null ? "Could not save it"
+                    : shot.downloads() ? "Saved to Downloads" : "Saved to screenshots";
+            if (left + f.width(where) + 6 <= buttonsLeft) {
+                g.text(f, where, left, textY, color(shot == null ? AssistHud.DIM : AssistHud.AMBER), false);
+                return;
+            }
         }
         for (String hint : HINTS) {
             if (left + f.width(hint) + 6 <= buttonsLeft) {
@@ -431,8 +466,40 @@ public final class SummaryScreen extends Screen {
     }
 
     @Override
+    public void tick() {
+        if (shotStage != 2) return;
+        shotStage = 0;
+        Snapshot.take(saved -> {
+            shot = saved;
+            shotAt = System.currentTimeMillis();
+            announce(saved);
+        });
+    }
+
+    private static void announce(Snapshot.Saved saved) {
+        ChatComponent chat = Compat.chat();
+        if (chat == null) return;
+        if (saved == null) {
+            chat.addClientSystemMessage(Chat.line("Could not save the screenshot."));
+            return;
+        }
+        String path = saved.file().toAbsolutePath().toString();
+        Component name = Component.literal(saved.file().getFileName().toString()).withStyle(st -> st
+                .withColor(ChatFormatting.AQUA)
+                .withUnderlined(true)
+                .withClickEvent(new ClickEvent.OpenFile(path))
+                .withHoverEvent(new HoverEvent.ShowText(Component.literal(path))));
+        String where = saved.downloads() ? "Screenshot saved to Downloads: " : "Screenshot saved to your screenshots folder: ";
+        chat.addClientSystemMessage(Chat.line(Component.literal(where).append(name)));
+    }
+
+    @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubled) {
         double mx = event.x(), my = event.y();
+        if (shotShown && mx >= shotX0 && mx < shotX1 && my >= shotY0 && my < shotY1) {
+            if (shotStage == 0) shotStage = 1;
+            return true;
+        }
         if (s.sellOff() != null && mx >= sellX0 && mx < sellX1 && my >= sellY0 && my < sellY1) {
             AssistClient client = AssistClient.get();
             if (client != null) client.finish("", true);
@@ -462,6 +529,9 @@ public final class SummaryScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
+        int mods = GLFW.GLFW_MOD_CONTROL | GLFW.GLFW_MOD_ALT | GLFW.GLFW_MOD_SUPER;
+        boolean modifier = event.key() >= GLFW.GLFW_KEY_LEFT_SHIFT && event.key() <= GLFW.GLFW_KEY_RIGHT_SUPER;
+        if (modifier || (event.modifiers() & mods) != 0) return super.keyPressed(event);
         Options o = Minecraft.getInstance().options;
         if (o.keyUp.matches(event) || o.keyDown.matches(event) || o.keyLeft.matches(event)
                 || o.keyRight.matches(event) || o.keyJump.matches(event) || o.keyShift.matches(event)

@@ -25,6 +25,7 @@ public final class ModConfig {
     public boolean autosign = false;
     public boolean tabFill = false;
     public int tabFills = 0;
+    public boolean npcRoute = false;
     public boolean tabFillReset = false;
     public String highlightColor = "#E8A33D";
     public String highlightShape = "OUTLINE_FILL";

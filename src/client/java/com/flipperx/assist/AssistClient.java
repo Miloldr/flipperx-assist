@@ -885,6 +885,8 @@ public class AssistClient implements ClientModInitializer {
                     STATE.notice(msg.get("notice").getAsString(), 5000);
                 }
             }
+            case "order_marks" -> STATE.marks(msg.has("marks") && msg.get("marks").isJsonArray()
+                    ? msg.getAsJsonArray("marks") : null);
             case "gain" -> {
                 if (msg.has("profit")) ProfitPops.spawn(msg.get("profit").getAsDouble());
                 if (msg.has("goal_reached") && msg.get("goal_reached").getAsBoolean()) {

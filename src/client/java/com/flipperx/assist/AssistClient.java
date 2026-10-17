@@ -925,6 +925,7 @@ public class AssistClient implements ClientModInitializer {
         o.addProperty("version", VersionCheck.current());
         o.addProperty("install", config.install());
         o.addProperty("utc_offset_min", utcOffsetMinutes());
+        o.addProperty("npc_route", config.npcRoute);
         socket.send(o);
         STATE.status("Authenticating...");
         authAt = System.currentTimeMillis();
@@ -1075,6 +1076,16 @@ public class AssistClient implements ClientModInitializer {
         JsonObject o = new JsonObject();
         o.addProperty("type", "share");
         o.addProperty("id", id);
+        socket.send(o);
+    }
+
+    public void setNpcRoute(boolean on) {
+        config.npcRoute = on;
+        config.save();
+        if (!STATE.linked() || !socket.connected()) return;
+        JsonObject o = new JsonObject();
+        o.addProperty("type", "route");
+        o.addProperty("npc", on);
         socket.send(o);
     }
 

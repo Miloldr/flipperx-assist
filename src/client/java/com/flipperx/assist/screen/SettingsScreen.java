@@ -1,5 +1,6 @@
 package com.flipperx.assist.screen;
 
+import com.flipperx.assist.AssistClient;
 import com.flipperx.assist.config.ModConfig;
 import com.flipperx.assist.game.Compat;
 import com.flipperx.assist.hud.AssistHud;
@@ -78,7 +79,7 @@ public final class SettingsScreen extends Screen {
     }
 
     private static int cardHeight() {
-        return PAD + LINE + 5 + PREVIEW_H + 8 + ROW * 4 + 4 + 1 + 5 + ROW + 4 + 1 + 8 + BUTTON_H + PAD;
+        return PAD + LINE + 5 + PREVIEW_H + 8 + ROW * 4 + 4 + 1 + 5 + ROW * 2 + 4 + 1 + 8 + BUTTON_H + PAD;
     }
 
     @Override
@@ -180,6 +181,11 @@ public final class SettingsScreen extends Screen {
         });
         y += ROW;
 
+        label(g, f, "Interact with bazaar via", left, y);
+        value(g, f, cfg.npcRoute ? "NPC" : "Commands", right, y, mouseX, mouseY,
+                step -> setNpcRoute(!cfg.npcRoute));
+        y += ROW;
+
         y += 4;
         g.fill(left, y, right, y + 1, color(AssistHud.BORDER));
         y += 1 + 8;
@@ -266,6 +272,18 @@ public final class SettingsScreen extends Screen {
         cfg.tabFill = false;
         cfg.save();
         hex.setValue(cfg.highlightColor);
+        if (cfg.npcRoute) setNpcRoute(false);
+    }
+
+    private static void setNpcRoute(boolean on) {
+        AssistClient client = AssistClient.get();
+        if (client != null) {
+            client.setNpcRoute(on);
+            return;
+        }
+        ModConfig cfg = ModConfig.get();
+        cfg.npcRoute = on;
+        cfg.save();
     }
 
     private static <E> E cycle(E[] values, E current, int step) {

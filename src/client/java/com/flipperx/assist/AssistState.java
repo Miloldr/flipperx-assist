@@ -64,6 +64,8 @@ public final class AssistState {
     public record Finish(String label, String right, double solid, double light, boolean time) {}
     private volatile Finish finish = null;
     public record Row(String label, String value, String right) {}
+    public record Mark(int slot, String name, int background, String lore, int loreColor) {}
+    private volatile java.util.List<Mark> marks = java.util.List.of();
     private volatile java.util.List<Row> rows = java.util.List.of();
     private volatile String cookieWarning = null;
     private volatile String notice = null;
@@ -107,6 +109,7 @@ public final class AssistState {
         if (running) resumeUntil = System.currentTimeMillis() + RESUME_WINDOW_MS;
         linked = false;
         running = false;
+        marks = java.util.List.of();
         set(Step.NONE);
         status("Connection lost. Reconnecting...");
     }
@@ -139,6 +142,26 @@ public final class AssistState {
     public Limit limit() { return limit; }
     public Finish finish() { return finish; }
     public java.util.List<Row> rows() { return rows; }
+
+    public void marks(com.google.gson.JsonArray arr) {
+        java.util.List<Mark> out = new java.util.ArrayList<>();
+        if (arr != null) for (var e : arr) {
+            if (!e.isJsonObject()) continue;
+            JsonObject m = e.getAsJsonObject();
+            if (!m.has("slot") || !m.has("background")) continue;
+            out.add(new Mark(m.get("slot").getAsInt(), text(m, "name"), m.get("background").getAsInt(),
+                    text(m, "lore"), m.has("lore_color") ? m.get("lore_color").getAsInt() : 0xFFFFFF));
+        }
+        marks = java.util.List.copyOf(out);
+    }
+
+    public Mark mark(int slot, String rawName) {
+        if (running || !linked) return null;
+        for (Mark m : marks) {
+            if (m.slot() == slot && m.name().equals(rawName)) return m;
+        }
+        return null;
+    }
     public boolean finishing() { return running && finish != null; }
     public String cookieWarning() { return cookieWarning; }
 

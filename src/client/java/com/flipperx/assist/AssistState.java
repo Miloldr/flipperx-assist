@@ -172,6 +172,9 @@ public final class AssistState {
             this.running = false;
             status("Stopped: " + hud.get("stopped_reason").getAsString() + ".");
         }
+        if (hud.has("stopped_text") && !hud.get("stopped_text").isJsonNull()) {
+            status(hud.get("stopped_text").getAsString());
+        }
         if (hud.has("profit") && !hud.get("profit").isJsonNull()) {
             this.profit = hud.get("profit").getAsDouble();
         }

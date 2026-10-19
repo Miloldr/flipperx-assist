@@ -69,6 +69,23 @@ public final class AssistCommand {
                             AssistClient.get().feedback(StringArgumentType.getString(ctx, "text"));
                             return 1;
                         })))
+                .then(ClientCommands.literal("break").executes(ctx -> {
+                    AssistClient.get().takeBreak();
+                    return 1;
+                }))
+                .then(ClientCommands.literal("warmup").executes(ctx -> {
+                    AssistClient.get().warmUp();
+                    return 1;
+                }))
+                .then(ClientCommands.literal("notify")
+                        .then(ClientCommands.literal("off").executes(ctx -> {
+                            AssistClient.get().comebackReminders(false, false);
+                            return 1;
+                        }))
+                        .then(ClientCommands.literal("on").executes(ctx -> {
+                            AssistClient.get().comebackReminders(true, false);
+                            return 1;
+                        })))
                 .then(ClientCommands.literal("update").executes(ctx -> {
                     AssistClient.get().update();
                     return 1;

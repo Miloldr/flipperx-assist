@@ -79,7 +79,7 @@ public final class SettingsScreen extends Screen {
     }
 
     private static int cardHeight() {
-        return PAD + LINE + 5 + PREVIEW_H + 8 + ROW * 4 + 4 + 1 + 5 + ROW * 2 + 4 + 1 + 8 + BUTTON_H + PAD;
+        return PAD + LINE + 5 + PREVIEW_H + 8 + ROW * 4 + 4 + 1 + 5 + ROW * 3 + 4 + 1 + 8 + BUTTON_H + PAD;
     }
 
     @Override
@@ -186,6 +186,11 @@ public final class SettingsScreen extends Screen {
                 step -> setNpcRoute(!cfg.npcRoute));
         y += ROW;
 
+        label(g, f, "Tell me when to come back", left, y);
+        value(g, f, cfg.comebackReminders ? "On" : "Off", right, y, mouseX, mouseY,
+                step -> setComebackReminders(!cfg.comebackReminders));
+        y += ROW;
+
         y += 4;
         g.fill(left, y, right, y + 1, color(AssistHud.BORDER));
         y += 1 + 8;
@@ -283,6 +288,17 @@ public final class SettingsScreen extends Screen {
         }
         ModConfig cfg = ModConfig.get();
         cfg.npcRoute = on;
+        cfg.save();
+    }
+
+    private static void setComebackReminders(boolean on) {
+        AssistClient client = AssistClient.get();
+        if (client != null) {
+            client.comebackReminders(on, true);
+            return;
+        }
+        ModConfig cfg = ModConfig.get();
+        cfg.comebackReminders = on;
         cfg.save();
     }
 

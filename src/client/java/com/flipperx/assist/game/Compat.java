@@ -8,6 +8,7 @@ import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.ChatComponent;
 import net.minecraft.client.gui.components.PlayerTabOverlay;
+import net.minecraft.client.gui.components.toasts.ToastManager;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -49,6 +50,16 @@ public final class Compat {
     private static final MethodHandle MC_SET_SCREEN = GUI_SET_SCREEN != null ? null
             : find(() -> LOOKUP.findVirtual(Minecraft.class, "setScreen",
                     MethodType.methodType(void.class, Screen.class)));
+
+    private static final MethodHandle GUI_TOASTS = find(() -> LOOKUP.findVirtual(Gui.class, "toastManager",
+            MethodType.methodType(ToastManager.class)));
+    private static final MethodHandle HUD_TOASTS = HUD == null ? null
+            : find(() -> LOOKUP.findVirtual(HUD.type().returnType(), "toastManager",
+                    MethodType.methodType(ToastManager.class)));
+    private static final MethodHandle MC_TOASTS = find(() -> LOOKUP.findVirtual(Minecraft.class, "toastManager",
+            MethodType.methodType(ToastManager.class)));
+    private static final MethodHandle MC_GET_TOASTS = find(() -> LOOKUP.findVirtual(Minecraft.class,
+            "getToastManager", MethodType.methodType(ToastManager.class)));
 
     private static final Object TEXTURED = staticField(RenderPipelines.class, "GUI_TEXTURED");
     private static final MethodHandle BLIT = TEXTURED == null ? null : find(() -> {
@@ -107,6 +118,19 @@ public final class Compat {
         } catch (Throwable t) {
             return null;
         }
+    }
+
+    public static ToastManager toasts() {
+        Minecraft mc = Minecraft.getInstance();
+        try {
+            if (GUI_TOASTS != null && mc.gui != null) return (ToastManager) GUI_TOASTS.invoke(mc.gui);
+            if (HUD_TOASTS != null && hud() != null) return (ToastManager) HUD_TOASTS.invoke(hud());
+            if (MC_TOASTS != null) return (ToastManager) MC_TOASTS.invoke(mc);
+            if (MC_GET_TOASTS != null) return (ToastManager) MC_GET_TOASTS.invoke(mc);
+        } catch (Throwable t) {
+            return null;
+        }
+        return null;
     }
 
     public static PlayerTabOverlay tabList() {

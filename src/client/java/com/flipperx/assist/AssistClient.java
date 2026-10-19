@@ -31,6 +31,7 @@ import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.gui.components.ChatComponent;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.toasts.SystemToast;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.client.gui.screens.Screen;
@@ -911,6 +912,7 @@ public class AssistClient implements ClientModInitializer {
                 Component line = Chat.fromServer(msg);
                 if (line != null) raw(line);
             }
+            case "toast" -> toast(msg);
             default -> { }
         }
     }
@@ -926,6 +928,7 @@ public class AssistClient implements ClientModInitializer {
         o.addProperty("install", config.install());
         o.addProperty("utc_offset_min", utcOffsetMinutes());
         o.addProperty("npc_route", config.npcRoute);
+        o.addProperty("notify", config.comebackReminders);
         socket.send(o);
         STATE.status("Authenticating...");
         authAt = System.currentTimeMillis();
@@ -1100,6 +1103,64 @@ public class AssistClient implements ClientModInitializer {
         socket.send(o);
     }
 
+    public void takeBreak() {
+        send("break");
+    }
+
+    public void warmUp() {
+        if (!Location.skyBlock()) {
+            chat("Join SkyBlock first.");
+            return;
+        }
+        if (send("warmup") && !STATE.running()) startedLocally();
+    }
+
+    public void comebackReminders(boolean on, boolean fromSettings) {
+        config.comebackReminders = on;
+        config.save();
+        if (!STATE.linked() || !socket.connected()) {
+            if (!fromSettings) chat(on ? "Reminders to come back are on." : "No more reminders to come back.");
+            return;
+        }
+        JsonObject o = new JsonObject();
+        o.addProperty("type", "notify");
+        o.addProperty("on", on);
+        if (fromSettings) o.addProperty("source", "settings");
+        socket.send(o);
+    }
+
+    public void summaryClosed() {
+        if (!STATE.linked() || !socket.connected()) return;
+        JsonObject o = new JsonObject();
+        o.addProperty("type", "summary_closed");
+        socket.send(o);
+    }
+
+    private boolean send(String type) {
+        if (!STATE.linked() || !socket.connected()) {
+            chat("§e" + STATE.status());
+            return false;
+        }
+        JsonObject o = new JsonObject();
+        o.addProperty("type", type);
+        o.addProperty("utc_offset_min", utcOffsetMinutes());
+        socket.send(o);
+        forceReport = true;
+        return true;
+    }
+
+    private static void toast(JsonObject msg) {
+        String title = msg.has("title") ? msg.get("title").getAsString() : Chat.NAME;
+        String text = msg.has("text") ? msg.get("text").getAsString() : "";
+        Minecraft.getInstance().execute(() -> {
+            var toasts = Compat.toasts();
+            if (toasts != null) {
+                SystemToast.addOrUpdate(toasts, SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
+                        Component.literal(title), Component.literal(text));
+            }
+        });
+    }
+
     public void feedback(String text) {
         if (!STATE.linked() || !socket.connected()) {
             chat("§e" + STATE.status());
@@ -1127,6 +1188,9 @@ public class AssistClient implements ClientModInitializer {
         chat("§e/flipperx summary §7the last session again");
         chat("§e/flipperx update §7download the latest version");
         chat("§e/flipperx stop §7or §e[ §7pause   §e/flipperx logout §7unlink");
+        chat("§e/flipperx break §7stop for now, get told when to come back");
+        chat("§e/flipperx warmup §7set bigger buy orders up now, flip once they've filled");
+        chat("§e/flipperx notify off §7no more reminders to come back");
         chat("§e/flipperx reminders off §7no login reminders while logged out");
         chat("§e/flipperx feedback §7tell us what you think   §e/flipperx discord §7questions and bug reports");
     }

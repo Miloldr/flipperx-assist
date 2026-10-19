@@ -528,6 +528,13 @@ public final class SummaryScreen extends Screen {
     }
 
     @Override
+    public void removed() {
+        AssistClient client = AssistClient.get();
+        if (client != null) client.summaryClosed();
+        super.removed();
+    }
+
+    @Override
     public boolean keyPressed(KeyEvent event) {
         int mods = GLFW.GLFW_MOD_CONTROL | GLFW.GLFW_MOD_ALT | GLFW.GLFW_MOD_SUPER;
         boolean modifier = event.key() >= GLFW.GLFW_KEY_LEFT_SHIFT && event.key() <= GLFW.GLFW_KEY_RIGHT_SUPER;

@@ -1,6 +1,7 @@
 package com.flipperx.assist.mixin;
 
 import com.flipperx.assist.AssistClient;
+import com.flipperx.assist.game.SkyblockerSearch;
 
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.network.protocol.game.ClientboundContainerClosePacket;
@@ -16,6 +17,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(ClientPacketListener.class)
 public abstract class MenuPacketMixin {
+    private static final String OPEN_TEXT_EDIT = "Lnet/minecraft/client/player/LocalPlayer;"
+            + "openTextEdit(Lnet/minecraft/world/level/block/entity/SignBlockEntity;Z)V";
+
     @Inject(method = "handleOpenScreen", at = @At("RETURN"))
     private void bzassist$opened(ClientboundOpenScreenPacket packet, CallbackInfo ci) {
         AssistClient.menuChanged();
@@ -29,6 +33,17 @@ public abstract class MenuPacketMixin {
     @Inject(method = "handleContainerSetSlot", at = @At("RETURN"))
     private void bzassist$slot(ClientboundContainerSetSlotPacket packet, CallbackInfo ci) {
         AssistClient.menuChanged();
+    }
+
+    @Inject(method = "handleOpenSignEditor", at = @At(value = "INVOKE", target = OPEN_TEXT_EDIT))
+    private void bzassist$vanillaSign(ClientboundOpenSignEditorPacket packet, CallbackInfo ci) {
+        SkyblockerSearch.suspend();
+    }
+
+    @Inject(method = "handleOpenSignEditor",
+            at = @At(value = "INVOKE", target = OPEN_TEXT_EDIT, shift = At.Shift.AFTER))
+    private void bzassist$vanillaSignDone(ClientboundOpenSignEditorPacket packet, CallbackInfo ci) {
+        SkyblockerSearch.resume();
     }
 
     @Inject(method = "handleOpenSignEditor", at = @At("RETURN"))

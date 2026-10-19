@@ -1100,6 +1100,17 @@ public class AssistClient implements ClientModInitializer {
         socket.send(o);
     }
 
+    public void feedback(String text) {
+        if (!STATE.linked() || !socket.connected()) {
+            chat("§e" + STATE.status());
+            return;
+        }
+        JsonObject o = new JsonObject();
+        o.addProperty("type", "feedback");
+        o.addProperty("text", text == null ? "" : text);
+        socket.send(o);
+    }
+
     public void resetHud() {
         config.hudX = -1;
         config.hudY = 8;
@@ -1117,7 +1128,7 @@ public class AssistClient implements ClientModInitializer {
         chat("§e/flipperx update §7download the latest version");
         chat("§e/flipperx stop §7or §e[ §7pause   §e/flipperx logout §7unlink");
         chat("§e/flipperx reminders off §7no login reminders while logged out");
-        chat("§e/flipperx discord §7questions and bug reports");
+        chat("§e/flipperx feedback §7tell us what you think   §e/flipperx discord §7questions and bug reports");
     }
 
     public void discord() {

@@ -60,6 +60,15 @@ public final class AssistCommand {
                                     AssistClient.get().finish(StringArgumentType.getString(ctx, "text"), false);
                                     return 1;
                                 })))
+                .then(ClientCommands.literal("feedback")
+                        .executes(ctx -> {
+                            AssistClient.get().feedback("");
+                            return 1;
+                        })
+                        .then(ClientCommands.argument("text", StringArgumentType.greedyString()).executes(ctx -> {
+                            AssistClient.get().feedback(StringArgumentType.getString(ctx, "text"));
+                            return 1;
+                        })))
                 .then(ClientCommands.literal("update").executes(ctx -> {
                     AssistClient.get().update();
                     return 1;

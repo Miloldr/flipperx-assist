@@ -77,6 +77,23 @@ public final class AssistCommand {
                     AssistClient.get().warmUp();
                     return 1;
                 }))
+                .then(ClientCommands.literal("passive")
+                        .executes(ctx -> {
+                            AssistClient.get().passive("");
+                            return 1;
+                        })
+                        .then(ClientCommands.literal("no").executes(ctx -> {
+                            AssistClient.get().passive("no");
+                            return 1;
+                        }))
+                        .then(ClientCommands.literal("later").executes(ctx -> {
+                            AssistClient.get().passive("later");
+                            return 1;
+                        }))
+                        .then(ClientCommands.literal("notify").executes(ctx -> {
+                            AssistClient.get().passive("notify");
+                            return 1;
+                        })))
                 .then(ClientCommands.literal("notify")
                         .then(ClientCommands.literal("off").executes(ctx -> {
                             AssistClient.get().comebackReminders(false, false);

@@ -15,6 +15,8 @@ import com.flipperx.assist.net.Reports;
 import com.flipperx.assist.net.VersionCheck;
 import com.flipperx.assist.screen.SettingsScreen;
 import com.flipperx.assist.screen.Summary;
+import com.flipperx.assist.screen.PassiveScreen;
+import com.flipperx.assist.screen.PassiveSummary;
 import com.flipperx.assist.screen.SummaryScreen;
 import com.flipperx.assist.update.Updater;
 import com.google.gson.JsonObject;
@@ -124,6 +126,8 @@ public class AssistClient implements ClientModInitializer {
     private static final long GREET_WAIT_MS = 10_000;
     private Summary lastSummary;
     private long summaryOpenUntil;
+    private PassiveSummary lastPassive;
+    private long passiveOpenUntil;
     private static final long SUMMARY_WAIT_MS = 60_000;
     private static final long FIRST_REMINDER_MS = 2 * 60_000;
     private static final long REMINDER_EVERY_MS = 20 * 60_000;
@@ -564,6 +568,7 @@ public class AssistClient implements ClientModInitializer {
     }
 
     private void maybeOpenSummary() {
+        maybeOpenPassive();
         if (lastSummary == null || summaryOpenUntil == 0) return;
         if (System.currentTimeMillis() > summaryOpenUntil) {
             summaryOpenUntil = 0;
@@ -572,6 +577,17 @@ public class AssistClient implements ClientModInitializer {
         if (GameUtil.currentScreen() != null) return;
         summaryOpenUntil = 0;
         Compat.setScreen(new SummaryScreen(lastSummary));
+    }
+
+    private void maybeOpenPassive() {
+        if (lastPassive == null || passiveOpenUntil == 0) return;
+        if (System.currentTimeMillis() > passiveOpenUntil) {
+            passiveOpenUntil = 0;
+            return;
+        }
+        if (GameUtil.currentScreen() != null) return;
+        passiveOpenUntil = 0;
+        Compat.setScreen(new PassiveScreen(lastPassive));
     }
 
     private void maybeReport() {
@@ -905,6 +921,10 @@ public class AssistClient implements ClientModInitializer {
                 lastSummary = Summary.from(msg);
                 summaryOpenUntil = System.currentTimeMillis() + SUMMARY_WAIT_MS;
             }
+            case "passive_summary" -> {
+                lastPassive = PassiveSummary.from(msg);
+                passiveOpenUntil = System.currentTimeMillis() + SUMMARY_WAIT_MS;
+            }
             case "message" -> {
                 if (msg.has("text")) chat(msg.get("text").getAsString());
             }
@@ -1115,6 +1135,25 @@ public class AssistClient implements ClientModInitializer {
         if (send("warmup") && !STATE.running()) startedLocally();
     }
 
+    public void passive(String choice) {
+        boolean run = choice == null || choice.isEmpty();
+        if (run && !Location.skyBlock()) {
+            chat("Join SkyBlock first.");
+            return;
+        }
+        if (!STATE.linked() || !socket.connected()) {
+            chat("§e" + STATE.status());
+            return;
+        }
+        JsonObject o = new JsonObject();
+        o.addProperty("type", "passive");
+        o.addProperty("choice", run ? "" : choice);
+        o.addProperty("utc_offset_min", utcOffsetMinutes());
+        socket.send(o);
+        forceReport = true;
+        if (run && !STATE.running()) startedLocally();
+    }
+
     public void comebackReminders(boolean on, boolean fromSettings) {
         config.comebackReminders = on;
         config.save();
@@ -1190,6 +1229,7 @@ public class AssistClient implements ClientModInitializer {
         chat("§e/flipperx stop §7or §e[ §7pause   §e/flipperx logout §7unlink");
         chat("§e/flipperx break §7stop for now, get told when to come back");
         chat("§e/flipperx warmup §7set bigger buy orders up now, flip once they've filled");
+        chat("§e/flipperx passive §7set up passive flips, or check up on them");
         chat("§e/flipperx notify off §7no more reminders to come back");
         chat("§e/flipperx reminders off §7no login reminders while logged out");
         chat("§e/flipperx feedback §7tell us what you think   §e/flipperx discord §7questions and bug reports");

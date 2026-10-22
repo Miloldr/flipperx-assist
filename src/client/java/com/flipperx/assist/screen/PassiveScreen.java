@@ -1,0 +1,304 @@
+package com.flipperx.assist.screen;
+
+import com.flipperx.assist.AssistClient;
+import com.flipperx.assist.hud.AssistHud;
+import com.flipperx.assist.hud.ItemIcon;
+
+import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.Options;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.network.chat.Component;
+import org.lwjgl.glfw.GLFW;
+
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.TextStyle;
+import java.util.List;
+import java.util.Locale;
+
+public final class PassiveScreen extends Screen {
+    private static final int PAD = 10;
+    private static final int MAX_W = 300;
+    private static final int LINE = 11;
+    private static final int BIG = 3;
+    private static final int CHART_H = 64;
+    private static final int FOOT_GAP = 9;
+    private static final int BUTTON_H = 20;
+    private static final long WEEK_MS = 7L * 24 * 3600 * 1000;
+
+    private static final int CARD = 0x121212;
+    private static final int GRID = 0x1C1C1C;
+    private static final int BASE = 0x333333;
+    private static final int BUTTON = 0x1E1E1E;
+    private static final String[] HINTS = {"Esc or any movement key closes this", "Esc or moving closes this", "Esc closes this"};
+    private static final DateTimeFormatter WHEN = DateTimeFormatter.ofPattern("EEE HH:mm", Locale.ENGLISH);
+
+    private final PassiveSummary s;
+    private final long openedAt = System.currentTimeMillis();
+    private final long now = System.currentTimeMillis();
+    private final double top;
+    private float a = 1f;
+    private boolean notified;
+    private int cardX0, cardY0, cardX1, cardY1;
+    private int closeX0, closeY0, closeX1, closeY1;
+    private int notifyX0, notifyY0, notifyX1, notifyY1;
+
+    public PassiveScreen(PassiveSummary summary) {
+        super(Component.literal("Passive flips"));
+        this.s = summary;
+        double cum = 0, hi = 0;
+        for (double p : summary.profits()) {
+            cum += p;
+            hi = Math.max(hi, cum);
+        }
+        top = Math.max(1, hi) * 1.12;
+    }
+
+    @Override
+    public boolean isPauseScreen() {
+        return false;
+    }
+
+    @Override
+    public void extractBackground(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
+        g.fill(0, 0, width, height, AssistHud.argb(0x000000, 0.38f * appear()));
+    }
+
+    private float appear() {
+        return AssistHud.easeOut3(Math.min(1f, (System.currentTimeMillis() - openedAt) / 240f));
+    }
+
+    private int cardHeight() {
+        int h = PAD * 2;
+        h += LINE + 3;
+        h += 8 * BIG + 6;
+        h += LINE + 8;
+        h += CHART_H + 4 + LINE + 6;
+        if (s.best() != null) h += 16 + 6;
+        h += 3 + 1 + FOOT_GAP + BUTTON_H;
+        return h;
+    }
+
+    @Override
+    public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
+        long t = System.currentTimeMillis() - openedAt;
+        a = appear();
+        Font f = font;
+        int w = Math.min(MAX_W, width - 24);
+        int h = cardHeight();
+        int x0 = (width - w) / 2;
+        int y0 = Math.max(8, (height - h) / 2) + Math.round((1f - a) * 6f);
+        cardX0 = x0; cardY0 = y0; cardX1 = x0 + w; cardY1 = y0 + h;
+
+        g.fill(x0, y0, x0 + w, y0 + h, AssistHud.argb(CARD, 0.96f * a));
+        box(g, x0, y0, x0 + w, y0 + h, color(AssistHud.BORDER));
+        int left = x0 + PAD, right = x0 + w - PAD, y = y0 + PAD;
+
+        g.text(f, s.title(), left, y, color(AssistHud.DIM), false);
+        g.text(f, s.span(), right - f.width(s.span()), y, color(AssistHud.DIM), false);
+        y += LINE + 3;
+
+        float k = AssistHud.easeOut3(Math.min(1f, Math.max(0f, (t - 120f) / 900f)));
+        g.pose().pushMatrix();
+        g.pose().translate(left, y);
+        g.pose().scale(BIG, BIG);
+        g.text(f, AssistHud.plus(s.total() * k), 0, 0, color(AssistHud.AMBER), false);
+        g.pose().popMatrix();
+        y += 8 * BIG + 6;
+
+        int cx = word(g, f, AssistHud.plus(s.since()), left, y, AssistHud.AMBER) + 5;
+        word(g, f, s.sinceLabel(), cx, y, AssistHud.DIM);
+        y += LINE + 8;
+
+        chart(g, f, left, y, right, t, mouseX, mouseY);
+        y += CHART_H + 4 + LINE + 6;
+
+        if (s.best() != null) {
+            Summary.Best b = s.best();
+            int bx = word(g, f, s.bestLabel(), left, y + 4, AssistHud.DIM) + 8;
+            if (ItemIcon.draw(g, b.look(), b.itemId(), b.icon(), bx, y, AssistHud.argb(0xFFFFFF, a))) {
+                bx += 20;
+            }
+            bx = word(g, f, b.itemName() == null ? "" : b.itemName(), bx, y + 4, AssistHud.TEXT);
+            if (b.quantity() > 0) word(g, f, "  " + b.quantity() + "x", bx, y + 4, AssistHud.DIM);
+            String gain = AssistHud.plus(b.profit());
+            g.text(f, gain, right - f.width(gain), y + 4, color(AssistHud.AMBER), false);
+            y += 16 + 6;
+        }
+
+        y += 3;
+        g.fill(left, y, right, y + 1, color(AssistHud.BORDER));
+        y += 1 + FOOT_GAP;
+        int textY = y + (BUTTON_H - 7) / 2;
+        String close = "Close";
+        closeX0 = right - f.width(close) - 20; closeX1 = right; closeY0 = y; closeY1 = y + BUTTON_H;
+        button(g, f, close, closeX0, closeY0, closeX1, closeY1, textY, mouseX, mouseY, false);
+        int buttonsLeft = closeX0;
+        if (s.notifyLabel() != null) {
+            String label = notified ? "Notifications on" : s.notifyLabel();
+            notifyX1 = closeX0 - 4; notifyX0 = notifyX1 - Math.max(f.width(s.notifyLabel()), f.width("Notifications on")) - 20;
+            notifyY0 = closeY0; notifyY1 = closeY1;
+            button(g, f, label, notifyX0, notifyY0, notifyX1, notifyY1, textY, mouseX, mouseY, !notified);
+            buttonsLeft = notifyX0;
+        }
+        for (String hint : HINTS) {
+            if (left + f.width(hint) + 6 <= buttonsLeft) {
+                g.text(f, hint, left, textY, color(AssistHud.DIM), false);
+                break;
+            }
+        }
+    }
+
+    private void chart(GuiGraphicsExtractor g, Font f, int left, int topY, int right, long t, int mouseX, int mouseY) {
+        int plotL = left, plotR = right, plotT = topY + 3, plotB = topY + CHART_H;
+        for (int i = 1; i <= 3; i++) {
+            int yy = plotT + (plotB - plotT) * i / 4 - 1;
+            g.fill(plotL, yy, plotR, yy + 1, color(GRID));
+        }
+        g.fill(plotL, plotB, plotR, plotB + 1, color(BASE));
+
+        long start = now - WEEK_MS;
+        ZoneId zone = ZoneId.systemDefault();
+        ZonedDateTime day = Instant.ofEpochMilli(start).atZone(zone).toLocalDate().plusDays(1).atStartOfDay(zone);
+        int labelY = plotB + 4;
+        int lastLabelR = Integer.MIN_VALUE;
+        String nowLabel = "now";
+        int nowX = plotR - f.width(nowLabel);
+        while (day.toInstant().toEpochMilli() < now) {
+            int xx = x(day.toInstant().toEpochMilli(), start, plotL, plotR);
+            String label = day.getDayOfWeek().getDisplayName(TextStyle.SHORT, Locale.ENGLISH);
+            int lx = xx - f.width(label) / 2;
+            if (lx > lastLabelR + 6 && lx + f.width(label) < nowX - 6 && lx >= plotL) {
+                g.text(f, label, lx, labelY, color(0x5E5E5E), false);
+                lastLabelR = lx + f.width(label);
+            }
+            day = day.plusDays(1);
+        }
+        g.text(f, nowLabel, nowX, labelY, color(AssistHud.DIM), false);
+
+        float reveal = AssistHud.easeOut3(Math.min(1f, Math.max(0f, (t - 80f) / 1000f)));
+        int clipR = plotL + Math.round((plotR - plotL) * reveal);
+        long[] ts = s.times();
+        double[] ps = s.profits();
+        int n = ts.length;
+        double cum = 0;
+        int prevX = plotL, prevY = y(0, plotT, plotB);
+        int[] sx = new int[n], sy = new int[n];
+        g.enableScissor(plotL - 1, plotT - 4, clipR + 1, plotB + 1);
+        for (int i = 0; i < n; i++) {
+            int xi = x(ts[i], start, plotL, plotR);
+            g.fill(prevX, Math.min(prevY, plotB), xi, plotB, color(AssistHud.AMBER, 0.08f));
+            g.fill(prevX, prevY, xi + 1, prevY + 2, color(AssistHud.AMBER));
+            cum += ps[i];
+            int yi = y(cum, plotT, plotB);
+            g.fill(xi, Math.min(prevY, yi), xi + 2, Math.max(prevY, yi) + 2, color(AssistHud.AMBER));
+            sx[i] = xi;
+            sy[i] = yi;
+            prevX = xi;
+            prevY = yi;
+        }
+        g.fill(prevX, Math.min(prevY, plotB), plotR, plotB, color(AssistHud.AMBER, 0.08f));
+        g.fill(prevX, prevY, plotR, prevY + 2, color(AssistHud.AMBER));
+        g.disableScissor();
+
+        int hovered = -1;
+        for (int i = 0; i < n; i++) {
+            if (sx[i] > clipR) break;
+            float pop = AssistHud.easeOut3(Math.min(1f, Math.max(0f, (clipR - sx[i]) / 30f)));
+            boolean last = i == n - 1;
+            int r = Math.max(1, Math.round((last ? 4 : 3) * pop));
+            boolean hover = Math.abs(mouseX - (sx[i] + 1)) <= 4 && Math.abs(mouseY - (sy[i] + 1)) <= 4;
+            if (hover) hovered = i;
+            int cxx = sx[i] + 1, cyy = sy[i] + 1;
+            g.fill(cxx - r - 1, cyy - r - 1, cxx + r + 1, cyy + r + 1, color(CARD));
+            g.fill(cxx - r, cyy - r, cxx + r, cyy + r, color(last ? AssistHud.AMBER : AssistHud.TEXT));
+            if (hover && !last) box(g, cxx - r - 1, cyy - r - 1, cxx + r + 1, cyy + r + 1, color(AssistHud.AMBER));
+        }
+        if (hovered >= 0 && reveal >= 1f) {
+            String when = WHEN.format(Instant.ofEpochMilli(ts[hovered]).atZone(zone));
+            g.setComponentTooltipForNextFrame(f, List.of(
+                    Component.literal(AssistHud.plus(ps[hovered])).withStyle(st -> st.withColor(AssistHud.AMBER)),
+                    Component.literal(when).withStyle(ChatFormatting.GRAY)), mouseX, mouseY);
+        }
+    }
+
+    private int y(double v, int topY, int bottom) {
+        return (int) Math.round(bottom - 1 - Math.max(0, v) / top * (bottom - 1 - topY));
+    }
+
+    private static int x(long ms, long start, int left, int right) {
+        double share = Math.clamp((double) (ms - start) / WEEK_MS, 0, 1);
+        return (int) Math.round(left + share * (right - left - 2));
+    }
+
+    private void button(GuiGraphicsExtractor g, Font f, String label, int x0, int y0, int x1, int y1, int textY,
+                        int mouseX, int mouseY, boolean main) {
+        boolean hover = mouseX >= x0 && mouseX < x1 && mouseY >= y0 && mouseY < y1;
+        g.fill(x0, y0, x1, y1, color(hover ? (main ? 0x2A2216 : 0x2E2E2E) : BUTTON));
+        int edge = main ? AssistHud.AMBER : (hover ? 0x5A5A5A : 0x3A3A3A);
+        box(g, x0, y0, x1, y1, color(edge));
+        int text = main || hover ? AssistHud.AMBER : AssistHud.TEXT;
+        if (!main && notified && label.equals("Notifications on")) text = AssistHud.DIM;
+        g.text(f, label, x0 + (x1 - x0 - f.width(label)) / 2, textY, color(text), false);
+    }
+
+    private int word(GuiGraphicsExtractor g, Font f, String text, int x, int yy, int rgb) {
+        g.text(f, text, x, yy, color(rgb), false);
+        return x + f.width(text);
+    }
+
+    private static void box(GuiGraphicsExtractor g, int x0, int y0, int x1, int y1, int argb) {
+        g.fill(x0, y0, x1, y0 + 1, argb);
+        g.fill(x0, y1 - 1, x1, y1, argb);
+        g.fill(x0, y0, x0 + 1, y1, argb);
+        g.fill(x1 - 1, y0, x1, y1, argb);
+    }
+
+    private int color(int rgb) {
+        return AssistHud.argb(rgb, a);
+    }
+
+    private int color(int rgb, float alpha) {
+        return AssistHud.argb(rgb, alpha * a);
+    }
+
+    @Override
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubled) {
+        double mx = event.x(), my = event.y();
+        if (s.notifyLabel() != null && !notified && mx >= notifyX0 && mx < notifyX1 && my >= notifyY0 && my < notifyY1) {
+            AssistClient client = AssistClient.get();
+            if (client != null) client.passive("notify");
+            notified = true;
+            return true;
+        }
+        boolean onClose = mx >= closeX0 && mx < closeX1 && my >= closeY0 && my < closeY1;
+        boolean outside = mx < cardX0 || mx >= cardX1 || my < cardY0 || my >= cardY1;
+        if (onClose || outside) {
+            onClose();
+            return true;
+        }
+        return super.mouseClicked(event, doubled);
+    }
+
+    @Override
+    public boolean keyPressed(KeyEvent event) {
+        int mods = GLFW.GLFW_MOD_CONTROL | GLFW.GLFW_MOD_ALT | GLFW.GLFW_MOD_SUPER;
+        boolean modifier = event.key() >= GLFW.GLFW_KEY_LEFT_SHIFT && event.key() <= GLFW.GLFW_KEY_RIGHT_SUPER;
+        if (modifier || (event.modifiers() & mods) != 0) return super.keyPressed(event);
+        Options o = Minecraft.getInstance().options;
+        if (o.keyUp.matches(event) || o.keyDown.matches(event) || o.keyLeft.matches(event)
+                || o.keyRight.matches(event) || o.keyJump.matches(event) || o.keyShift.matches(event)
+                || o.keyInventory.matches(event)) {
+            onClose();
+            return true;
+        }
+        return super.keyPressed(event);
+    }
+}

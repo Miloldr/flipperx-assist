@@ -33,6 +33,7 @@ public final class PassiveScreen extends Screen {
     private static final int GRID = 0x1C1C1C;
     private static final int BASE = 0x333333;
     private static final int BUTTON = 0x1E1E1E;
+    private static final int TRACK = 0x2A2A2A;
     private static final int CLOSE = 14;
     private static final DateTimeFormatter WHEN = DateTimeFormatter.ofPattern("EEE HH:mm", Locale.ENGLISH);
 
@@ -81,6 +82,7 @@ public final class PassiveScreen extends Screen {
         h += LINE + 8;
         h += CHART_H + 4 + LINE + 6;
         if (s.best() != null) h += 16 + 6;
+        if (s.goal() != null) h += LINE + 3 + 8;
         h += 3 + 1 + FOOT_GAP + BUTTON_H;
         return h;
     }
@@ -120,7 +122,10 @@ public final class PassiveScreen extends Screen {
         y += 8 * BIG + 6;
 
         int cx = word(g, f, AssistHud.plus(s.since()), left, y, AssistHud.AMBER) + 5;
-        word(g, f, s.sinceLabel(), cx, y, AssistHud.DIM);
+        cx = word(g, f, s.sinceLabel(), cx, y, AssistHud.DIM);
+        if (s.took() != null && right - f.width(s.took()) > cx + 8) {
+            word(g, f, s.took(), right - f.width(s.took()), y, AssistHud.DIM);
+        }
         y += LINE + 8;
 
         chart(g, f, left, y, right, t, mouseX, mouseY);
@@ -137,6 +142,21 @@ public final class PassiveScreen extends Screen {
             String gain = AssistHud.plus(b.profit());
             g.text(f, gain, right - f.width(gain), y + 4, color(AssistHud.AMBER), false);
             y += 16 + 6;
+        }
+
+        if (s.goal() != null) {
+            Summary.Goal gl = s.goal();
+            double target = Math.max(1, gl.target());
+            int pct = (int) Math.floor(Math.min(1, gl.after() / target) * 100);
+            g.text(f, gl.label() == null ? "" : gl.label(), left, y, color(AssistHud.TEXT), false);
+            String at = gl.after() >= target ? "reached" : pct + "%";
+            g.text(f, at, right - f.width(at), y, color(AssistHud.DIM), false);
+            y += LINE;
+            float grow = AssistHud.easeOut3(Math.min(1f, Math.max(0f, (t - 500f) / 900f)));
+            g.fill(left, y, right, y + 3, color(TRACK));
+            int fill = (int) Math.round((right - left) * Math.min(1, gl.after() / target) * grow);
+            if (fill > 0) g.fill(left, y, left + fill, y + 3, color(AssistHud.AMBER));
+            y += 3 + 8;
         }
 
         y += 3;

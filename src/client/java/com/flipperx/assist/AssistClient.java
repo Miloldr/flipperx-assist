@@ -112,6 +112,9 @@ public class AssistClient implements ClientModInitializer {
     private String lastClickedName = "";
     private Prefetch prefetch;
     private static final long PREFETCH_TTL_MS = 15_000;
+    private int clickedSlot = -1;
+    private int clickedHash;
+    private long landedSeq = -1;
 
     private record Target(AssistState.Step step, String on, String title, boolean prefix,
                           List<String> names, boolean inv, String after) {}
@@ -152,6 +155,13 @@ public class AssistClient implements ClientModInitializer {
         if (client == null) return;
         String raw = GameUtil.rawName(slot.getItem());
         client.lastClickedName = GameUtil.strip(raw).trim();
+        AssistState.Step step = STATE.step();
+        if (STATE.running() && STATE.current() && step.isClick() && step.slot() == slot.index) {
+            client.clickedSlot = slot.index;
+            client.clickedHash = client.screenHash();
+        } else {
+            client.clickedSlot = -1;
+        }
         JsonObject o = new JsonObject();
         o.addProperty("slot", slot.index);
         o.addProperty("name", raw);
@@ -256,6 +266,8 @@ public class AssistClient implements ClientModInitializer {
             reports.reset();
             discardStep = false;
             prefetch = null;
+            landedSeq = -1;
+            clickedSlot = -1;
         }
         boolean skyBlock = Location.skyBlock();
         if (skyBlock) {
@@ -716,8 +728,17 @@ public class AssistClient implements ClientModInitializer {
         Screen screen = GameUtil.currentScreen();
         if (screen instanceof ChatScreen) return;
         int context = screenContext();
-        if (context == p.from()) return;
         Target t = p.target();
+        boolean landing = "landed".equals(t.on());
+        if (landing) {
+            if (context != p.from()) {
+                prefetch = null;
+                return;
+            }
+            if (!clickLanded()) return;
+        } else if (context == p.from()) {
+            return;
+        }
         int slot = -1;
         String name = null;
         if ("world".equals(t.on())) {
@@ -762,9 +783,20 @@ public class AssistClient implements ClientModInitializer {
             if (slot < 0) return;
         }
         prefetch = null;
+        if (landing) {
+            clickedSlot = -1;
+            landedSeq = reports.next() - 1;
+        }
         STATE.receiveStep(t.step().ahead(slot, STATE.step()), false);
         acceptedContext = context;
         acceptedSlotName = name;
+    }
+
+    private boolean clickLanded() {
+        if (clickedSlot < 0) return false;
+        var menu = GameUtil.handler();
+        if (menu == null || !menu.getCarried().isEmpty()) return false;
+        return screenHash() != clickedHash;
     }
 
     private static boolean titleMatches(Target t) {
@@ -868,7 +900,7 @@ public class AssistClient implements ClientModInitializer {
                 long seq = msg.has("seq") && !msg.get("seq").isJsonNull() ? msg.get("seq").getAsLong() : -1;
                 int answered = reports.context(seq, reportedContext);
                 if (reports.stale(seq)) {
-                    if (!discardStep && STATE.running()) {
+                    if (!discardStep && STATE.running() && seq > landedSeq) {
                         notePrefetch(msg, answered, false);
                         showEarly(msg, answered);
                     }
@@ -889,6 +921,10 @@ public class AssistClient implements ClientModInitializer {
                             && hud.has("stopped_reason") && !hud.get("stopped_reason").isJsonNull()) {
                         chat("§e" + STATE.status() + " " + startAgain());
                     }
+                }
+                if (seq >= 0 && seq <= landedSeq) {
+                    forceReport = true;
+                    return;
                 }
                 AssistState.Step incoming = AssistState.Step.from(msg);
                 String targetName = reportedSlotNames.get(incoming.slot());

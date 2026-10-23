@@ -54,6 +54,8 @@ public final class AssistState {
     private volatile long stepSince = 0;
     private volatile boolean current;
     private volatile boolean running = false;
+    private volatile com.google.gson.JsonArray serverSettings = new com.google.gson.JsonArray();
+    private volatile int serverSettingsVersion = 0;
     private volatile boolean linked = false;
     private volatile double profit = 0;
     private volatile Double profitPerHour = null;
@@ -142,6 +144,14 @@ public final class AssistState {
     public Limit limit() { return limit; }
     public Finish finish() { return finish; }
     public java.util.List<Row> rows() { return rows; }
+
+    public com.google.gson.JsonArray serverSettings() { return serverSettings; }
+    public int serverSettingsVersion() { return serverSettingsVersion; }
+
+    public void serverSettings(com.google.gson.JsonArray rows) {
+        serverSettings = rows == null ? new com.google.gson.JsonArray() : rows;
+        serverSettingsVersion++;
+    }
 
     public void marks(com.google.gson.JsonArray arr) {
         java.util.List<Mark> out = new java.util.ArrayList<>();

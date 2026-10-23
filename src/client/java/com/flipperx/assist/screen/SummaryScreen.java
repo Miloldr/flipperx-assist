@@ -8,8 +8,6 @@ import com.flipperx.assist.hud.AssistHud;
 import com.flipperx.assist.hud.ItemIcon;
 
 import net.minecraft.ChatFormatting;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.Options;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.components.ChatComponent;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -47,22 +45,23 @@ public final class SummaryScreen extends Screen {
     private int cardX0, cardY0, cardX1, cardY1;
     private int closeX0, closeY0, closeX1, closeY1;
     private int shareX0, shareY0, shareX1, shareY1;
+    private int flexX0, flexY0, flexX1, flexY1;
+    private boolean flexShown;
+    private int flexStage;
     private int sellX0, sellY0, sellX1, sellY1;
     private int shotX0, shotY0, shotX1, shotY1;
     private boolean shotShown;
     private int shotStage;
     private long shotAt;
     private Snapshot.Saved shot;
-    private long copiedAt;
     private static final long COPIED_MS = 2500;
     private static final long SAVED_MS = 6000;
-    private static final String SHARE = "Replay & Share";
+    private static final int CLOSE = 14;
+    private static final String SHARE = "Replay";
     private static final String SCREENSHOT = "Screenshot";
     private static final int GLOW_SESSIONS = 3;
     private boolean glow;
     private boolean sellInline;
-    private static final String[] HINTS = {
-            "Esc or any movement key closes this", "Esc or moving closes this", "Esc closes this"};
     private float a = 1f;
 
     public SummaryScreen(Summary summary) {
@@ -101,10 +100,11 @@ public final class SummaryScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
-        if (shotStage > 0) {
+        if (shotStage > 0 || flexStage > 0) {
             mouseX = -1;
             mouseY = -1;
             if (shotStage == 1) shotStage = 2;
+            if (flexStage == 1) flexStage = 2;
         }
         long t = System.currentTimeMillis() - openedAt;
         a = appear();
@@ -130,8 +130,10 @@ public final class SummaryScreen extends Screen {
         int left = x0 + PAD, right = x0 + w - PAD, y = y0 + PAD;
 
         g.text(f, "Session over", left, y, color(AssistHud.DIM), false);
+        closeX1 = right + 3; closeX0 = closeX1 - CLOSE; closeY0 = y - 3; closeY1 = closeY0 + CLOSE;
+        Flex.closeX(g, closeX0, closeY0, CLOSE, hit(mouseX, mouseY, closeX0, closeY0, closeX1, closeY1), a);
         String length = duration(s.runSeconds());
-        g.text(f, length, right - f.width(length), y, color(AssistHud.DIM), false);
+        g.text(f, length, closeX0 - 6 - f.width(length), y, color(AssistHud.DIM), false);
         y += LINE + 3;
 
         float k = AssistHud.easeOut3(Math.min(1f, Math.max(0f, (t - 120f) / 900f)));
@@ -215,30 +217,36 @@ public final class SummaryScreen extends Screen {
         g.fill(left, y, right, y + 1, color(AssistHud.BORDER));
         y += 1 + FOOT_GAP;
         int textY = y + (BUTTON_H - 7) / 2;
-        String close = "Close";
-        closeX0 = right - f.width(close) - 20; closeX1 = right; closeY0 = y; closeY1 = y + BUTTON_H;
-        button(g, f, close, closeX0, closeY0, closeX1, closeY1, textY, mouseX, mouseY);
-        int buttonsLeft = closeX0;
+        int buttonsLeft = right + 4;
         if (s.shareUrl() != null) {
-            String share = System.currentTimeMillis() - copiedAt < COPIED_MS ? "Copied" : SHARE;
-            shareX1 = closeX0 - 4; shareX0 = shareX1 - Math.max(f.width(SHARE), f.width("Copied")) - 20;
-            shareY0 = closeY0; shareY1 = closeY1;
+            shareX1 = buttonsLeft - 4; shareX0 = shareX1 - f.width(SHARE) - 20;
+            shareY0 = y; shareY1 = y + BUTTON_H;
             if (glow) glow(g, shareX0, shareY0, shareX1, shareY1, t);
-            button(g, f, share, shareX0, shareY0, shareX1, shareY1, textY, mouseX, mouseY);
+            button(g, f, SHARE, shareX0, shareY0, shareX1, shareY1, textY, mouseX, mouseY);
             if (glow) {
                 float p = pulse(t);
                 box(g, shareX0, shareY0, shareX1, shareY1, color(AssistHud.AMBER, 0.45f + 0.55f * p));
-                if (!share.equals("Copied")) {
-                    g.text(f, share, shareX0 + (shareX1 - shareX0 - f.width(share)) / 2, textY,
-                            color(AssistHud.AMBER), false);
-                }
+                g.text(f, SHARE, shareX0 + (shareX1 - shareX0 - f.width(SHARE)) / 2, textY,
+                        color(AssistHud.AMBER), false);
             }
             buttonsLeft = shareX0;
+        }
+        flexShown = false;
+        if (s.flex() != null) {
+            String label = Flex.label(s.flex());
+            flexX1 = buttonsLeft - 4;
+            flexX0 = flexX1 - Math.max(f.width(label), f.width(s.flex().label())) - 20;
+            flexY0 = y; flexY1 = y + BUTTON_H;
+            flexShown = flexX0 >= left;
+            if (flexShown) {
+                flexButton(g, f, label, textY, mouseX, mouseY);
+                buttonsLeft = flexX0;
+            }
         }
         long sinceShot = System.currentTimeMillis() - shotAt;
         String shotLabel = sinceShot >= COPIED_MS ? SCREENSHOT : shot == null ? "Failed" : "Saved";
         shotX1 = buttonsLeft - 4; shotX0 = shotX1 - f.width(SCREENSHOT) - 20;
-        shotY0 = closeY0; shotY1 = closeY1;
+        shotY0 = y; shotY1 = y + BUTTON_H;
         shotShown = shotX0 >= left;
         if (shotShown) {
             button(g, f, shotLabel, shotX0, shotY0, shotX1, shotY1, textY, mouseX, mouseY);
@@ -249,15 +257,21 @@ public final class SummaryScreen extends Screen {
                     : shot.downloads() ? "Saved to Downloads" : "Saved to screenshots";
             if (left + f.width(where) + 6 <= buttonsLeft) {
                 g.text(f, where, left, textY, color(shot == null ? AssistHud.DIM : AssistHud.AMBER), false);
-                return;
             }
         }
-        for (String hint : HINTS) {
-            if (left + f.width(hint) + 6 <= buttonsLeft) {
-                g.text(f, hint, left, textY, color(AssistHud.DIM), false);
-                break;
-            }
-        }
+    }
+
+    private void flexButton(GuiGraphicsExtractor g, Font f, String label, int textY, int mouseX, int mouseY) {
+        boolean live = Flex.pressable(s.flex());
+        boolean hover = live && hit(mouseX, mouseY, flexX0, flexY0, flexX1, flexY1);
+        g.fill(flexX0, flexY0, flexX1, flexY1, color(hover ? 0x2A2216 : BUTTON));
+        box(g, flexX0, flexY0, flexX1, flexY1, color(live ? AssistHud.AMBER : 0x3A3A3A));
+        g.text(f, label, flexX0 + (flexX1 - flexX0 - f.width(label)) / 2, textY,
+                color(live ? AssistHud.AMBER : AssistHud.DIM), false);
+    }
+
+    private static boolean hit(double mx, double my, int x0, int y0, int x1, int y1) {
+        return mx >= x0 && mx < x1 && my >= y0 && my < y1;
     }
 
     private void sellButton(GuiGraphicsExtractor g, Font f, int x0, int y0, int x1, int mouseX, int mouseY) {
@@ -374,7 +388,7 @@ public final class SummaryScreen extends Screen {
             g.text(f, label, plotL - 5 - f.width(label), yy - 4, color(AssistHud.DIM), false);
         }
         int labelY = plotB + 4;
-        g.text(f, "0m", plotL, labelY, color(AssistHud.DIM), false);
+        g.text(f, "0min", plotL, labelY, color(AssistHud.DIM), false);
         String mid = duration(Math.round(total / 2));
         g.text(f, mid, (plotL + plotR) / 2 - f.width(mid) / 2, labelY, color(AssistHud.DIM), false);
         String end = duration(total);
@@ -441,8 +455,8 @@ public final class SummaryScreen extends Screen {
 
     static String duration(double seconds) {
         long m = Math.round(seconds / 60.0);
-        if (m < 60) return m + "m";
-        return (m / 60) + "h " + (m % 60) + "m";
+        if (m < 60) return m + "min";
+        return (m / 60) + "h " + (m % 60) + "min";
     }
 
     private int word(GuiGraphicsExtractor g, Font f, String text, int x, int y, int rgb) {
@@ -467,6 +481,10 @@ public final class SummaryScreen extends Screen {
 
     @Override
     public void tick() {
+        if (flexStage == 2) {
+            flexStage = 0;
+            Flex.capture(s.flex());
+        }
         if (shotStage != 2) return;
         shotStage = 0;
         Snapshot.take(saved -> {
@@ -506,21 +524,22 @@ public final class SummaryScreen extends Screen {
             onClose();
             return true;
         }
-        if (s.shareUrl() != null && mx >= shareX0 && mx < shareX1 && my >= shareY0 && my < shareY1) {
+        if (s.shareUrl() != null && hit(mx, my, shareX0, shareY0, shareX1, shareY1)) {
             AssistClient client = AssistClient.get();
-            if (client != null) client.shareSummary(s.shareUrl(), s.shareId());
+            if (client != null) client.openReplay(s.shareUrl(), s.shareId());
             glow = false;
             ModConfig cfg = ModConfig.get();
             if (!cfg.replayClicked) {
                 cfg.replayClicked = true;
                 cfg.save();
             }
-            copiedAt = System.currentTimeMillis();
             return true;
         }
-        boolean onClose = mx >= closeX0 && mx < closeX1 && my >= closeY0 && my < closeY1;
-        boolean outside = mx < cardX0 || mx >= cardX1 || my < cardY0 || my >= cardY1;
-        if (onClose || outside) {
+        if (flexShown && flexStage == 0 && hit(mx, my, flexX0, flexY0, flexX1, flexY1)) {
+            if (Flex.press(s.flex())) flexStage = 1;
+            return true;
+        }
+        if (hit(mx, my, closeX0, closeY0, closeX1, closeY1)) {
             onClose();
             return true;
         }
@@ -529,6 +548,7 @@ public final class SummaryScreen extends Screen {
 
     @Override
     public void removed() {
+        if (flexStage != 0) Flex.cancel();
         AssistClient client = AssistClient.get();
         if (client != null) client.summaryClosed();
         super.removed();
@@ -539,13 +559,6 @@ public final class SummaryScreen extends Screen {
         int mods = GLFW.GLFW_MOD_CONTROL | GLFW.GLFW_MOD_ALT | GLFW.GLFW_MOD_SUPER;
         boolean modifier = event.key() >= GLFW.GLFW_KEY_LEFT_SHIFT && event.key() <= GLFW.GLFW_KEY_RIGHT_SUPER;
         if (modifier || (event.modifiers() & mods) != 0) return super.keyPressed(event);
-        Options o = Minecraft.getInstance().options;
-        if (o.keyUp.matches(event) || o.keyDown.matches(event) || o.keyLeft.matches(event)
-                || o.keyRight.matches(event) || o.keyJump.matches(event) || o.keyShift.matches(event)
-                || o.keyInventory.matches(event)) {
-            onClose();
-            return true;
-        }
         AssistClient client = AssistClient.get();
         if (client != null && client.handleKey(event)) {
             onClose();

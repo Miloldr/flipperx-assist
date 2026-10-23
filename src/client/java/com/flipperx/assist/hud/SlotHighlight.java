@@ -24,8 +24,8 @@ public final class SlotHighlight {
     }
 
     public record Look(int rgb, Shape shape, int width, Pulse pulse) {
-        public static final String DEFAULT_COLOR = "#E8A33D";
-        public static final Look DEFAULT = new Look(AssistHud.AMBER, Shape.OUTLINE_FILL, 1, Pulse.ALWAYS);
+        public static final String DEFAULT_COLOR = "#3D8BE8";
+        public static final Look DEFAULT = new Look(0x3D8BE8, Shape.OUTLINE_FILL, 2, Pulse.ALWAYS);
 
         public static Look of(ModConfig cfg) {
             Integer rgb = parseColor(cfg.highlightColor);

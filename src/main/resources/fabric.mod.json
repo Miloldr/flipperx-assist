@@ -3,7 +3,7 @@
   "id": "bzassist",
   "version": "${version}",
   "name": "Bazaar Assist",
-  "description": "Shows you which bazaar slot to click and which command to type. It never clicks, types or moves for you.",
+  "description": "FlipperX - Hypixel Skyblock Bazaar Assist. For manual use only, automation is prohibited and punishable in flipperx.digital/terms",
   "authors": ["FlipperX"],
   "license": "ARR",
   "environment": "client",

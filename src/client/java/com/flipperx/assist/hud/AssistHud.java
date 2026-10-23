@@ -365,8 +365,8 @@ public final class AssistHud {
         return new int[]{(g.guiWidth() - width) / 2, Math.clamp(cfg.hudY, 0, maxY)};
     }
 
-    public static void renderHighlight(GuiGraphicsExtractor g, Screen screen, int slotX, int slotY) {
-        HIGHLIGHT.draw(g, screen, slotX, slotY, SlotHighlight.Look.of(ModConfig.get()));
+    public static void renderHighlight(GuiGraphicsExtractor g, Screen screen, int slotX, int slotY, boolean right) {
+        HIGHLIGHT.draw(g, screen, slotX, slotY, SlotHighlight.Look.of(ModConfig.get()), right);
     }
 
     public static void clearHighlight() {

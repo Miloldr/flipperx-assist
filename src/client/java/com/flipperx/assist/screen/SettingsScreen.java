@@ -7,7 +7,6 @@ import com.flipperx.assist.hud.AssistHud;
 import com.flipperx.assist.hud.SlotHighlight;
 import com.flipperx.assist.hud.SlotHighlight.Look;
 import com.flipperx.assist.hud.SlotHighlight.Pulse;
-import com.flipperx.assist.hud.SlotHighlight.Shape;
 
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -43,7 +42,7 @@ public final class SettingsScreen extends Screen {
     private static final int HEX_W = 52;
     private static final int PREVIEW_ROWS = 3;
     private static final int PREVIEW_W = 176;
-    private static final int PREVIEW_H = PREVIEW_ROWS * 18 + 14;
+    private static final int PREVIEW_H = PREVIEW_ROWS * 18 + 24;
     private static final long PREVIEW_STEP_MS = 1800;
 
     private static final int CARD = 0x121212;
@@ -51,6 +50,7 @@ public final class SettingsScreen extends Screen {
     private static final int[] SWATCHES = {
             0x3D8BE8, 0xE8A33D, 0xFFFFFF, 0xFFE14D, 0x7DDF3C, 0x3FC8FF, 0xE64CFF, 0xFF4A4A};
     private static final int[] PREVIEW_PATH = {15, 16, 10};
+    private static final int PREVIEW_RIGHT = 1;
 
     private record Hit(int x0, int y0, int x1, int y1, IntConsumer action) {
         boolean contains(double x, double y) {
@@ -225,9 +225,9 @@ public final class SettingsScreen extends Screen {
         box(g, right - HEX_W, boxY, right, boxY + CONTROL_H, color(hex.isFocused() ? 0x5A5A5A : 0x3A3A3A));
         y += ROW;
 
-        label(g, f, "Style", left, y);
-        value(g, f, look.shape().label, right, y, mouseX, mouseY, step -> {
-            cfg.highlightShape = cycle(Shape.values(), look.shape(), step).name();
+        label(g, f, "Fill", left, y);
+        value(g, f, look.fill() ? "On" : "Off", right, y, mouseX, mouseY, step -> {
+            cfg.highlightFill = !look.fill();
             cfg.save();
         });
         y += ROW;
@@ -354,8 +354,12 @@ public final class SettingsScreen extends Screen {
             g.item(previewItems[i], sx, sy);
         }
         long t = System.currentTimeMillis() - openedAt;
-        int slot = PREVIEW_PATH[(int) ((t / PREVIEW_STEP_MS) % PREVIEW_PATH.length)];
-        preview.draw(g, this, px + 8 + (slot % 9) * 18, py + 8 + (slot / 9) * 18, look);
+        int stop = (int) ((t / PREVIEW_STEP_MS) % PREVIEW_PATH.length);
+        int slot = PREVIEW_PATH[stop];
+        boolean right = stop == PREVIEW_RIGHT;
+        preview.draw(g, this, px + 8 + (slot % 9) * 18, py + 8 + (slot / 9) * 18, look, right);
+        String says = right ? "Corners: right click" : "Outline: left click";
+        g.text(font, says, px + w - 6 - font.width(says), py + h - 11, color(0x3F3F3F), false);
     }
 
     private void drawSwatches(GuiGraphicsExtractor g, int rightEdge, int rowY, Look look, int mouseX, int mouseY) {
@@ -402,7 +406,7 @@ public final class SettingsScreen extends Screen {
 
     private void reset() {
         cfg.highlightColor = Look.DEFAULT_COLOR;
-        cfg.highlightShape = Look.DEFAULT.shape().name();
+        cfg.highlightFill = Look.DEFAULT.fill();
         cfg.highlightWidth = Look.DEFAULT.width();
         cfg.highlightPulse = Look.DEFAULT.pulse().name();
         cfg.tabFill = false;

@@ -25,7 +25,7 @@ public abstract class ContainerScreenMouseMixin {
         AbstractContainerScreenAccessor acc = (AbstractContainerScreenAccessor) self;
         Slot slot = acc.bzassist$getHoveredSlot();
         if (slot != null) {
-            ProfitPops.noteClick(self, acc.bzassist$getLeftPos() + slot.x, acc.bzassist$getTopPos() + slot.y);
+            ProfitPops.noteClick(acc.bzassist$getLeftPos() + slot.x, acc.bzassist$getTopPos() + slot.y);
         }
     }
 

@@ -31,7 +31,7 @@ public abstract class ContainerScreenMixin {
                 if (slot.index != step.slot()) continue;
                 int x = ((AbstractContainerScreenAccessor) self).bzassist$getLeftPos() + slot.x;
                 int y = ((AbstractContainerScreenAccessor) self).bzassist$getTopPos() + slot.y;
-                AssistHud.renderHighlight(graphics, self, x, y);
+                AssistHud.renderHighlight(graphics, self, x, y, "right".equals(step.click()));
                 drawn = true;
                 break;
             }

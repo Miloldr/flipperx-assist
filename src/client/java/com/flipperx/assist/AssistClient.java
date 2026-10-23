@@ -13,6 +13,7 @@ import com.flipperx.assist.mixin.SignEditScreenAccessor;
 import com.flipperx.assist.net.AssistSocket;
 import com.flipperx.assist.net.Reports;
 import com.flipperx.assist.net.VersionCheck;
+import com.flipperx.assist.screen.Flex;
 import com.flipperx.assist.screen.SettingsScreen;
 import com.flipperx.assist.screen.Summary;
 import com.flipperx.assist.screen.PassiveScreen;
@@ -46,6 +47,7 @@ import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.Slot;
+import net.minecraft.util.Util;
 
 
 import java.net.URI;
@@ -957,6 +959,10 @@ public class AssistClient implements ClientModInitializer {
                 lastSummary = Summary.from(msg);
                 summaryOpenUntil = System.currentTimeMillis() + SUMMARY_WAIT_MS;
             }
+            case "flex_result" -> Flex.result(
+                    msg.has("id") ? msg.get("id").getAsString() : null,
+                    msg.has("ok") && msg.get("ok").getAsBoolean(),
+                    msg.has("text") ? msg.get("text").getAsString() : null);
             case "passive_summary" -> {
                 lastPassive = PassiveSummary.from(msg);
                 passiveOpenUntil = System.currentTimeMillis() + SUMMARY_WAIT_MS;
@@ -969,6 +975,8 @@ public class AssistClient implements ClientModInitializer {
                 if (line != null) raw(line);
             }
             case "toast" -> toast(msg);
+            case "settings" -> STATE.serverSettings(msg.has("rows") && msg.get("rows").isJsonArray()
+                    ? msg.getAsJsonArray("rows") : null);
             default -> { }
         }
     }
@@ -1128,13 +1136,41 @@ public class AssistClient implements ClientModInitializer {
         summaryOpenUntil = System.currentTimeMillis() + SUMMARY_WAIT_MS;
     }
 
-    public void shareSummary(String url, String id) {
-        Minecraft.getInstance().keyboardHandler.setClipboard(url);
-        chat(Component.literal("Link copied: ").append(Chat.link(Chat.shortUrl(url), url)));
+    public void openReplay(String url, String id) {
+        try {
+            Util.getPlatform().openUri(URI.create(url));
+        } catch (RuntimeException e) {
+            chat(Component.literal("Replay: ").append(Chat.link(Chat.shortUrl(url), url)));
+        }
         if (id == null || !STATE.linked() || !socket.connected()) return;
         JsonObject o = new JsonObject();
         o.addProperty("type", "share");
         o.addProperty("id", id);
+        socket.send(o);
+    }
+
+    public boolean sendFlex(String id, String image) {
+        if (id == null || !STATE.linked() || !socket.connected()) return false;
+        JsonObject o = new JsonObject();
+        o.addProperty("type", "flex");
+        o.addProperty("id", id);
+        o.addProperty("image", image);
+        return socket.send(o);
+    }
+
+    public void requestSettings() {
+        if (!STATE.linked() || !socket.connected()) return;
+        JsonObject o = new JsonObject();
+        o.addProperty("type", "settings_get");
+        socket.send(o);
+    }
+
+    public void setting(String key, String value) {
+        if (key == null || !STATE.linked() || !socket.connected()) return;
+        JsonObject o = new JsonObject();
+        o.addProperty("type", "setting");
+        o.addProperty("key", key);
+        o.addProperty("value", value == null ? "" : value);
         socket.send(o);
     }
 

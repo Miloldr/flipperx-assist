@@ -5,15 +5,11 @@ import com.flipperx.assist.hud.AssistHud;
 import com.flipperx.assist.hud.ItemIcon;
 
 import net.minecraft.ChatFormatting;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.Options;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
-import org.lwjgl.glfw.GLFW;
 
 import java.time.Instant;
 import java.time.ZoneId;
@@ -37,7 +33,7 @@ public final class PassiveScreen extends Screen {
     private static final int GRID = 0x1C1C1C;
     private static final int BASE = 0x333333;
     private static final int BUTTON = 0x1E1E1E;
-    private static final String[] HINTS = {"Esc or any movement key closes this", "Esc or moving closes this", "Esc closes this"};
+    private static final int CLOSE = 14;
     private static final DateTimeFormatter WHEN = DateTimeFormatter.ofPattern("EEE HH:mm", Locale.ENGLISH);
 
     private final PassiveSummary s;
@@ -49,6 +45,9 @@ public final class PassiveScreen extends Screen {
     private int cardX0, cardY0, cardX1, cardY1;
     private int closeX0, closeY0, closeX1, closeY1;
     private int notifyX0, notifyY0, notifyX1, notifyY1;
+    private int flexX0, flexY0, flexX1, flexY1;
+    private boolean flexShown;
+    private int flexStage;
 
     public PassiveScreen(PassiveSummary summary) {
         super(Component.literal("Passive flips"));
@@ -88,6 +87,11 @@ public final class PassiveScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
+        if (flexStage > 0) {
+            mouseX = -1;
+            mouseY = -1;
+            if (flexStage == 1) flexStage = 2;
+        }
         long t = System.currentTimeMillis() - openedAt;
         a = appear();
         Font f = font;
@@ -102,7 +106,9 @@ public final class PassiveScreen extends Screen {
         int left = x0 + PAD, right = x0 + w - PAD, y = y0 + PAD;
 
         g.text(f, s.title(), left, y, color(AssistHud.DIM), false);
-        g.text(f, s.span(), right - f.width(s.span()), y, color(AssistHud.DIM), false);
+        closeX1 = right + 3; closeX0 = closeX1 - CLOSE; closeY0 = y - 3; closeY1 = closeY0 + CLOSE;
+        Flex.closeX(g, closeX0, closeY0, CLOSE, hit(mouseX, mouseY, closeX0, closeY0, closeX1, closeY1), a);
+        g.text(f, s.span(), closeX0 - 6 - f.width(s.span()), y, color(AssistHud.DIM), false);
         y += LINE + 3;
 
         float k = AssistHud.easeOut3(Math.min(1f, Math.max(0f, (t - 120f) / 900f)));
@@ -137,23 +143,48 @@ public final class PassiveScreen extends Screen {
         g.fill(left, y, right, y + 1, color(AssistHud.BORDER));
         y += 1 + FOOT_GAP;
         int textY = y + (BUTTON_H - 7) / 2;
-        String close = "Close";
-        closeX0 = right - f.width(close) - 20; closeX1 = right; closeY0 = y; closeY1 = y + BUTTON_H;
-        button(g, f, close, closeX0, closeY0, closeX1, closeY1, textY, mouseX, mouseY, false);
-        int buttonsLeft = closeX0;
+        int buttonsLeft = right + 4;
         if (s.notifyLabel() != null) {
             String label = notified ? "Notifications on" : s.notifyLabel();
-            notifyX1 = closeX0 - 4; notifyX0 = notifyX1 - Math.max(f.width(s.notifyLabel()), f.width("Notifications on")) - 20;
-            notifyY0 = closeY0; notifyY1 = closeY1;
+            notifyX1 = buttonsLeft - 4; notifyX0 = notifyX1 - Math.max(f.width(s.notifyLabel()), f.width("Notifications on")) - 20;
+            notifyY0 = y; notifyY1 = y + BUTTON_H;
             button(g, f, label, notifyX0, notifyY0, notifyX1, notifyY1, textY, mouseX, mouseY, !notified);
             buttonsLeft = notifyX0;
         }
-        for (String hint : HINTS) {
-            if (left + f.width(hint) + 6 <= buttonsLeft) {
-                g.text(f, hint, left, textY, color(AssistHud.DIM), false);
-                break;
+        flexShown = false;
+        if (s.flex() != null) {
+            String label = Flex.label(s.flex());
+            flexX1 = buttonsLeft - 4;
+            flexX0 = flexX1 - Math.max(f.width(label), f.width(s.flex().label())) - 20;
+            flexY0 = y; flexY1 = y + BUTTON_H;
+            flexShown = flexX0 >= left;
+            if (flexShown) {
+                boolean live = Flex.pressable(s.flex());
+                boolean hover = live && hit(mouseX, mouseY, flexX0, flexY0, flexX1, flexY1);
+                g.fill(flexX0, flexY0, flexX1, flexY1, color(hover ? 0x2E2E2E : BUTTON));
+                box(g, flexX0, flexY0, flexX1, flexY1, color(hover ? 0x5A5A5A : 0x3A3A3A));
+                g.text(f, label, flexX0 + (flexX1 - flexX0 - f.width(label)) / 2, textY,
+                        color(!live ? AssistHud.DIM : hover ? AssistHud.AMBER : AssistHud.TEXT), false);
             }
         }
+    }
+
+    private static boolean hit(double mx, double my, int x0, int y0, int x1, int y1) {
+        return mx >= x0 && mx < x1 && my >= y0 && my < y1;
+    }
+
+    @Override
+    public void tick() {
+        if (flexStage == 2) {
+            flexStage = 0;
+            Flex.capture(s.flex());
+        }
+    }
+
+    @Override
+    public void removed() {
+        if (flexStage != 0) Flex.cancel();
+        super.removed();
     }
 
     private void chart(GuiGraphicsExtractor g, Font f, int left, int topY, int right, long t, int mouseX, int mouseY) {
@@ -278,27 +309,14 @@ public final class PassiveScreen extends Screen {
             notified = true;
             return true;
         }
-        boolean onClose = mx >= closeX0 && mx < closeX1 && my >= closeY0 && my < closeY1;
-        boolean outside = mx < cardX0 || mx >= cardX1 || my < cardY0 || my >= cardY1;
-        if (onClose || outside) {
+        if (flexShown && flexStage == 0 && hit(mx, my, flexX0, flexY0, flexX1, flexY1)) {
+            if (Flex.press(s.flex())) flexStage = 1;
+            return true;
+        }
+        if (hit(mx, my, closeX0, closeY0, closeX1, closeY1)) {
             onClose();
             return true;
         }
         return super.mouseClicked(event, doubled);
-    }
-
-    @Override
-    public boolean keyPressed(KeyEvent event) {
-        int mods = GLFW.GLFW_MOD_CONTROL | GLFW.GLFW_MOD_ALT | GLFW.GLFW_MOD_SUPER;
-        boolean modifier = event.key() >= GLFW.GLFW_KEY_LEFT_SHIFT && event.key() <= GLFW.GLFW_KEY_RIGHT_SUPER;
-        if (modifier || (event.modifiers() & mods) != 0) return super.keyPressed(event);
-        Options o = Minecraft.getInstance().options;
-        if (o.keyUp.matches(event) || o.keyDown.matches(event) || o.keyLeft.matches(event)
-                || o.keyRight.matches(event) || o.keyJump.matches(event) || o.keyShift.matches(event)
-                || o.keyInventory.matches(event)) {
-            onClose();
-            return true;
-        }
-        return super.keyPressed(event);
     }
 }

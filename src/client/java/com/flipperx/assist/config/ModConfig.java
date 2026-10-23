@@ -28,10 +28,11 @@ public final class ModConfig {
     public boolean npcRoute = false;
     public boolean comebackReminders = true;
     public boolean tabFillReset = false;
-    public String highlightColor = "#E8A33D";
+    public String highlightColor = "#3D8BE8";
     public String highlightShape = "OUTLINE_FILL";
-    public int highlightWidth = 1;
+    public int highlightWidth = 2;
     public String highlightPulse = "ALWAYS";
+    public boolean highlightBlue = false;
     public int replayGlows = 0;
     public boolean replayClicked = false;
     public String lastVersion;
@@ -57,6 +58,15 @@ public final class ModConfig {
                         c.tabFillReset = true;
                         c.save();
                     }
+                    if (!c.highlightBlue) {
+                        if ("#E8A33D".equalsIgnoreCase(c.highlightColor) && "OUTLINE_FILL".equals(c.highlightShape)
+                                && c.highlightWidth == 1 && "ALWAYS".equals(c.highlightPulse)) {
+                            c.highlightColor = "#3D8BE8";
+                            c.highlightWidth = 2;
+                        }
+                        c.highlightBlue = true;
+                        c.save();
+                    }
                     return c;
                 }
             }
@@ -64,6 +74,7 @@ public final class ModConfig {
         }
         ModConfig fresh = new ModConfig();
         fresh.tabFillReset = true;
+        fresh.highlightBlue = true;
         return fresh;
     }
 

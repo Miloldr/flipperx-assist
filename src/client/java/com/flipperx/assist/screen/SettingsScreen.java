@@ -20,8 +20,14 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.IntConsumer;
 
 public final class SettingsScreen extends Screen {
@@ -43,7 +49,7 @@ public final class SettingsScreen extends Screen {
     private static final int CARD = 0x121212;
     private static final int BUTTON = 0x1E1E1E;
     private static final int[] SWATCHES = {
-            0xE8A33D, 0xFFFFFF, 0xFFE14D, 0x7DDF3C, 0x3FC8FF, 0x4A6CFF, 0xE64CFF, 0xFF4A4A};
+            0x3D8BE8, 0xE8A33D, 0xFFFFFF, 0xFFE14D, 0x7DDF3C, 0x3FC8FF, 0xE64CFF, 0xFF4A4A};
     private static final int[] PREVIEW_PATH = {15, 16, 10};
 
     private record Hit(int x0, int y0, int x1, int y1, IntConsumer action) {
@@ -58,6 +64,9 @@ public final class SettingsScreen extends Screen {
     private final List<Hit> hits = new ArrayList<>();
     private final long openedAt = System.currentTimeMillis();
     private EditBox hex;
+    private final Map<String, EditBox> inputs = new HashMap<>();
+    private final Map<String, String> sent = new HashMap<>();
+    private int serverVersion = -1;
     private int cardX0, cardY0, cardX1, cardY1;
     private float a;
 
@@ -79,7 +88,25 @@ public final class SettingsScreen extends Screen {
     }
 
     private static int cardHeight() {
-        return PAD + LINE + 5 + PREVIEW_H + 8 + ROW * 4 + 4 + 1 + 5 + ROW * 3 + 4 + 1 + 8 + BUTTON_H + PAD;
+        int rows = serverRows().size();
+        return PAD + LINE + 5 + PREVIEW_H + 8 + ROW * 4 + 4 + 1 + 5 + ROW * 3 + 4 + 1
+                + (rows > 0 ? 5 + ROW * rows + 4 + 1 : 0) + 8 + BUTTON_H + PAD;
+    }
+
+    private static int serverTop(int cardY0) {
+        return cardY0 + PAD + LINE + 5 + PREVIEW_H + 8 + ROW * 4 + 4 + 1 + 5 + ROW * 3 + 4 + 1 + 5;
+    }
+
+    private static List<JsonObject> serverRows() {
+        List<JsonObject> out = new ArrayList<>();
+        JsonArray rows = AssistClient.state().serverSettings();
+        for (JsonElement e : rows) if (e.isJsonObject()) out.add(e.getAsJsonObject());
+        return out;
+    }
+
+    private static String str(JsonObject o, String key) {
+        JsonElement e = o.get(key);
+        return e == null || e.isJsonNull() ? "" : e.getAsString();
     }
 
     @Override
@@ -108,6 +135,55 @@ public final class SettingsScreen extends Screen {
             cfg.save();
         });
         addRenderableWidget(hex);
+
+        if (serverVersion < 0) {
+            AssistClient client = AssistClient.get();
+            if (client != null) client.requestSettings();
+        }
+        serverVersion = AssistClient.state().serverSettingsVersion();
+        inputs.clear();
+        int y = serverTop(cardY0);
+        for (JsonObject r : serverRows()) {
+            if ("text".equals(str(r, "kind"))) {
+                String key = str(r, "key");
+                int x0 = cardX1 - PAD - VALUE_W;
+                int y0 = y + (ROW - CONTROL_H) / 2;
+                EditBox box = new EditBox(font, x0 + 5, y0 + 4, VALUE_W - 7, 8, Component.literal(str(r, "label")));
+                box.setBordered(false);
+                box.setMaxLength(r.has("max") ? Math.max(1, r.get("max").getAsInt()) : 64);
+                box.setTextColor(0xFFE8E8E8);
+                box.setValue(str(r, "value"));
+                sent.putIfAbsent(key, str(r, "value"));
+                inputs.put(key, box);
+                addRenderableWidget(box);
+            }
+            y += ROW;
+        }
+    }
+
+    @Override
+    public void tick() {
+        super.tick();
+        if (AssistClient.state().serverSettingsVersion() != serverVersion) {
+            sendInputs();
+            rebuildWidgets();
+        }
+    }
+
+    private void sendInputs() {
+        AssistClient client = AssistClient.get();
+        for (Map.Entry<String, EditBox> e : inputs.entrySet()) {
+            String value = e.getValue().getValue();
+            if (value.equals(sent.get(e.getKey()))) continue;
+            sent.put(e.getKey(), value);
+            if (client != null) client.setting(e.getKey(), value);
+        }
+    }
+
+    @Override
+    public void removed() {
+        sendInputs();
+        super.removed();
     }
 
     @Override
@@ -193,7 +269,20 @@ public final class SettingsScreen extends Screen {
 
         y += 4;
         g.fill(left, y, right, y + 1, color(AssistHud.BORDER));
-        y += 1 + 8;
+        y += 1;
+
+        List<JsonObject> rows = serverRows();
+        if (!rows.isEmpty()) {
+            y += 5;
+            for (JsonObject r : rows) {
+                serverRow(g, f, r, left, right, y, mouseX, mouseY);
+                y += ROW;
+            }
+            y += 4;
+            g.fill(left, y, right, y + 1, color(AssistHud.BORDER));
+            y += 1;
+        }
+        y += 8;
 
         String done = "Done";
         int doneX0 = right - f.width(done) - 24;
@@ -204,6 +293,48 @@ public final class SettingsScreen extends Screen {
                 step -> reset());
 
         super.extractRenderState(g, mouseX, mouseY, delta);
+    }
+
+    private void serverRow(GuiGraphicsExtractor g, Font f, JsonObject r, int left, int right, int y,
+                           int mouseX, int mouseY) {
+        String kind = str(r, "kind"), key = str(r, "key"), text = str(r, "label");
+        AssistClient client = AssistClient.get();
+        switch (kind) {
+            case "header" -> g.text(f, text, left, y + (ROW - 7) / 2, color(AssistHud.TEXT), false);
+            case "choice" -> {
+                label(g, f, text, left, y);
+                List<String[]> options = new ArrayList<>();
+                if (r.has("options") && r.get("options").isJsonArray()) {
+                    for (JsonElement e : r.getAsJsonArray("options")) {
+                        if (!e.isJsonObject()) continue;
+                        options.add(new String[]{str(e.getAsJsonObject(), "value"), str(e.getAsJsonObject(), "label")});
+                    }
+                }
+                if (options.isEmpty()) return;
+                String current = str(r, "value");
+                int at = 0;
+                for (int i = 0; i < options.size(); i++) if (options.get(i)[0].equals(current)) at = i;
+                int index = at;
+                value(g, f, options.get(at)[1], right, y, mouseX, mouseY, step -> {
+                    if (client != null) client.setting(key, options.get(Math.floorMod(index + step, options.size()))[0]);
+                });
+            }
+            case "button" -> {
+                label(g, f, text, left, y);
+                value(g, f, str(r, "action"), right, y, mouseX, mouseY, step -> {
+                    if (client != null) client.setting(key, "press");
+                });
+            }
+            case "text" -> {
+                label(g, f, text, left, y);
+                EditBox box = inputs.get(key);
+                int boxY = y + (ROW - CONTROL_H) / 2;
+                g.fill(right - VALUE_W, boxY, right, boxY + CONTROL_H, color(BUTTON));
+                box(g, right - VALUE_W, boxY, right, boxY + CONTROL_H,
+                        color(box != null && box.isFocused() ? 0x5A5A5A : 0x3A3A3A));
+            }
+            default -> label(g, f, text, left, y);
+        }
     }
 
     private void drawPreview(GuiGraphicsExtractor g, int px, int py, Look look) {

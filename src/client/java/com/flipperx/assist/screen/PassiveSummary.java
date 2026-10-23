@@ -7,7 +7,8 @@ import com.google.gson.JsonObject;
 
 public record PassiveSummary(String title, String span, double total, double since, String sinceLabel,
                              long[] times, double[] profits, Summary.Best best, String bestLabel,
-                             String notifyLabel, String notifyCommand, Flex.Offer flex) {
+                             String notifyLabel, String notifyCommand, Flex.Offer flex, String took,
+                             Summary.Goal goal) {
 
     public static PassiveSummary from(JsonObject o) {
         JsonArray pts = o.has("points") && o.get("points").isJsonArray() ? o.getAsJsonArray("points") : new JsonArray();
@@ -31,10 +32,15 @@ public record PassiveSummary(String title, String span, double total, double sin
             notifyLabel = str(n, "label");
             notifyCommand = str(n, "command");
         }
+        Summary.Goal goal = null;
+        if (o.has("goal") && o.get("goal").isJsonObject()) {
+            JsonObject g = o.getAsJsonObject("goal");
+            goal = new Summary.Goal(str(g, "label"), num(g, "target"), num(g, "before"), num(g, "after"));
+        }
         return new PassiveSummary(orElse(str(o, "title"), "Passive flips"), orElse(str(o, "span"), "this week"),
-                num(o, "total"), num(o, "since"), orElse(str(o, "since_label"), "since last check-in"),
+                num(o, "total"), num(o, "since"), orElse(str(o, "since_label"), "since last check in"),
                 times, profits, best, orElse(str(o, "best_label"), "Best item"), notifyLabel, notifyCommand,
-                Flex.Offer.from(o.get("flex")));
+                Flex.Offer.from(o.get("flex")), str(o, "took"), goal);
     }
 
     private static String orElse(String v, String fallback) {

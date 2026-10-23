@@ -6,7 +6,7 @@ import com.flipperx.assist.game.Location;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -25,7 +25,7 @@ public final class ProfitPops {
     private static final int LOSS = 0xD27C78;
     private static final int SMALL = 0xDADADA;
 
-    private record Pop(String text, double amount, float x, float y, long born, Screen screen, int color,
+    private record Pop(String text, double amount, float x, float y, long born, int color,
                        int scale, float rise) {
         boolean big() { return scale > 1; }
     }
@@ -33,19 +33,17 @@ public final class ProfitPops {
     private static final List<Pop> POPS = new ArrayList<>();
     private static long clickAt;
     private static float clickX, clickY;
-    private static Screen clickScreen;
 
-    public static void noteClick(Screen screen, float x, float y) {
+    public static void noteClick(float x, float y) {
         clickAt = System.currentTimeMillis();
         clickX = x + 8f;
         clickY = y;
-        clickScreen = screen;
     }
 
     public static void spawn(double profit) {
         long now = System.currentTimeMillis();
-        Screen screen = GameUtil.currentScreen();
-        boolean clicked = clickScreen != null && clickScreen == screen && now - clickAt < CLICK_WINDOW_MS;
+        boolean clicked = GameUtil.currentScreen() instanceof AbstractContainerScreen<?>
+                && now - clickAt < CLICK_WINDOW_MS;
         if (!clicked && AssistHud.moneyAnchor() != null) {
             AssistHud.showDelta(profit);
             return;
@@ -60,14 +58,14 @@ public final class ProfitPops {
             y = w.getGuiScaledHeight() / 3f;
         }
         Pop last = POPS.isEmpty() ? null : POPS.getLast();
-        if (last != null && last.rise() > 0 && last.screen() == screen && now - last.born() < MERGE_MS
+        if (last != null && last.rise() > 0 && now - last.born() < MERGE_MS
                 && Math.abs(last.x() - x) < 1f && Math.abs(last.y() - y) < 1f) {
             POPS.removeLast();
             profit += last.amount();
         }
         int color = profit < 0 ? LOSS : profit < 100_000 ? SMALL : AssistHud.AMBER;
         int scale = profit >= 1_000_000 ? 2 : 1;
-        POPS.add(new Pop(AssistHud.plus(profit), profit, x, y, now, screen, color, scale,
+        POPS.add(new Pop(AssistHud.plus(profit), profit, x, y, now, color, scale,
                 scale > 1 ? BIG_RISE : profit < 0 ? RISE * 0.6f : RISE));
         while (POPS.size() > 24) POPS.removeFirst();
     }
@@ -83,18 +81,15 @@ public final class ProfitPops {
             x = w.getGuiScaledWidth() / 2f;
             y = w.getGuiScaledHeight() / 3f;
         }
-        POPS.add(new Pop(text, 0, x, y, System.currentTimeMillis(), GameUtil.currentScreen(), AssistHud.AMBER,
-                2, -8f));
+        POPS.add(new Pop(text, 0, x, y, System.currentTimeMillis(), AssistHud.AMBER, 2, -8f));
     }
 
     public static void render(GuiGraphicsExtractor g) {
         if (POPS.isEmpty() || !Location.skyBlock()) return;
         long now = System.currentTimeMillis();
-        Screen screen = GameUtil.currentScreen();
         Font font = Minecraft.getInstance().font;
         POPS.removeIf(p -> now - p.born() > (p.big() ? BIG_LIFE_MS : LIFE_MS));
         for (Pop p : POPS) {
-            if (p.screen() != screen) continue;
             float life = p.big() ? BIG_LIFE_MS : LIFE_MS;
             float t = (now - p.born()) / life;
             float rise = p.rise() * AssistHud.easeOut3(t);

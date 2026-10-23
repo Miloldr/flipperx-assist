@@ -7,14 +7,6 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import java.util.Locale;
 
 public final class SlotHighlight {
-    public enum Shape {
-        OUTLINE_FILL("Outline and fill"), OUTLINE("Outline"), FILL("Fill"), CORNERS("Corners");
-
-        public final String label;
-
-        Shape(String label) { this.label = label; }
-    }
-
     public enum Pulse {
         ALWAYS("Always"), MOVES("When it moves"), OFF("Off");
 
@@ -23,14 +15,15 @@ public final class SlotHighlight {
         Pulse(String label) { this.label = label; }
     }
 
-    public record Look(int rgb, Shape shape, int width, Pulse pulse) {
+    public record Look(int rgb, boolean fill, int width, Pulse pulse) {
         public static final String DEFAULT_COLOR = "#3D8BE8";
-        public static final Look DEFAULT = new Look(0x3D8BE8, Shape.OUTLINE_FILL, 2, Pulse.ALWAYS);
+        public static final Look DEFAULT = new Look(0x3D8BE8, true, 2, Pulse.ALWAYS);
 
         public static Look of(ModConfig cfg) {
             Integer rgb = parseColor(cfg.highlightColor);
-            return new Look(rgb == null ? DEFAULT.rgb : rgb,
-                    parse(Shape.class, cfg.highlightShape, DEFAULT.shape),
+            boolean fill = cfg.highlightFill != null ? cfg.highlightFill
+                    : !"OUTLINE".equals(cfg.highlightShape) && !"CORNERS".equals(cfg.highlightShape);
+            return new Look(rgb == null ? DEFAULT.rgb : rgb, fill,
                     cfg.highlightWidth == 2 ? 2 : 1,
                     parse(Pulse.class, cfg.highlightPulse, DEFAULT.pulse));
         }
@@ -39,14 +32,14 @@ public final class SlotHighlight {
     private static final float GLIDE_TAU_MS = 55f;
     private static final double PULSE_S = 1.6;
     private static final long MOVE_PULSE_MS = 3200;
-    private static final int CORNER = 5;
+    private static final int CORNER = 6;
 
     private float x = Float.NaN, y;
     private int targetX, targetY;
     private Object screen;
     private long lastNs, movedAt;
 
-    public void draw(GuiGraphicsExtractor g, Object screen, int slotX, int slotY, Look look) {
+    public void draw(GuiGraphicsExtractor g, Object screen, int slotX, int slotY, Look look, boolean right) {
         long nowNs = System.nanoTime();
         float dt = lastNs == 0 ? 0f : Math.min(100f, (nowNs - lastNs) / 1_000_000f);
         lastNs = nowNs;
@@ -68,15 +61,9 @@ public final class SlotHighlight {
         int line = AssistHud.argb(look.rgb(), alpha);
         int w = look.width();
         int x0 = sx - 1, y0 = sy - 1, x1 = sx + 17, y1 = sy + 17;
-        switch (look.shape()) {
-            case OUTLINE_FILL -> {
-                ring(g, x0, y0, x1, y1, w, line);
-                g.fill(x0 + w, y0 + w, x1 - w, y1 - w, AssistHud.argb(look.rgb(), 0.25f * alpha));
-            }
-            case OUTLINE -> ring(g, x0, y0, x1, y1, w, line);
-            case FILL -> g.fill(sx, sy, sx + 16, sy + 16, AssistHud.argb(look.rgb(), 0.42f * alpha));
-            case CORNERS -> corners(g, x0, y0, x1, y1, w, line);
-        }
+        if (look.fill()) g.fill(x0 + w, y0 + w, x1 - w, y1 - w, AssistHud.argb(look.rgb(), 0.25f * alpha));
+        if (right) corners(g, x0, y0, x1, y1, w, line);
+        else ring(g, x0, y0, x1, y1, w, line);
     }
 
     public void clear() {

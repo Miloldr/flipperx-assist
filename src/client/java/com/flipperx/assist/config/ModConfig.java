@@ -29,7 +29,8 @@ public final class ModConfig {
     public boolean comebackReminders = true;
     public boolean tabFillReset = false;
     public String highlightColor = "#3D8BE8";
-    public String highlightShape = "OUTLINE_FILL";
+    public String highlightShape;
+    public Boolean highlightFill;
     public int highlightWidth = 2;
     public String highlightPulse = "ALWAYS";
     public boolean highlightBlue = false;

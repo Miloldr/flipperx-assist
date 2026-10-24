@@ -554,12 +554,16 @@ public class AssistClient implements ClientModInitializer {
         pendingConfirm = null;
     }
 
+    public String lastMenuTitle() {
+        return lastMenuTitle;
+    }
+
     private void fillSign() {
         if (!config.autosign || !STATE.running() || !STATE.current()) return;
         if (!(GameUtil.currentScreen() instanceof AbstractSignEditScreen screen)) return;
         AssistState.Step step = STATE.step();
         String text = step.text();
-        if (!step.isSign() || text.isEmpty()) return;
+        if (!step.isSign() || text.isEmpty() || !step.signOf().opensFrom(lastMenuTitle)) return;
         int context = screenContext();
         if (context == filledSign || context != acceptedContext) return;
         filledSign = context;

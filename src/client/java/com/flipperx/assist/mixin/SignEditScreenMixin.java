@@ -1,6 +1,7 @@
 package com.flipperx.assist.mixin;
 
 import com.flipperx.assist.AssistClient;
+import com.flipperx.assist.AssistState;
 import com.flipperx.assist.AssistState.Step;
 import com.flipperx.assist.game.Location;
 import com.flipperx.assist.hud.AssistHud;
@@ -24,6 +25,7 @@ public abstract class SignEditScreenMixin {
     private static final int GREY = 0xFF7A7A7A;
     private static final int GREEN = 0xFF7CCB6B;
     private static final int RED = 0xFFD9534F;
+    private static final int DONE_TOP = 144;
 
     @Inject(method = "extractRenderState", at = @At("TAIL"))
     private void bzassist$drawAmount(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta,
@@ -40,13 +42,19 @@ public abstract class SignEditScreenMixin {
         String typed = lines != null && lines.length > 0 && lines[0] != null ? lines[0].trim() : "";
         int line = sign.bzassist$getLine();
         String want = step.text();
-        boolean search = !want.chars().allMatch(Character::isDigit);
+        AssistState.SignOf of = step.signOf();
+        String what = !of.what().isEmpty() ? of.what() : want.matches("[\\d.,]+") ? "amount" : "search";
+        boolean search = "search".equals(what);
         String compared = search ? typed.toLowerCase(Locale.ROOT) : typed;
 
         int cx = graphics.guiWidth() / 2;
-        int y = graphics.guiHeight() / 2 + 44;
+        int y = Math.min(graphics.guiHeight() / 2 + 44, graphics.guiHeight() / 4 + DONE_TOP - 30);
 
-        String heading = (search ? "Search: " : "Amount: ") + want;
+        if (!of.opensFrom(AssistClient.get().lastMenuTitle())) {
+            drawCentered(graphics, "Assist did not ask for this sign. Press Esc.", cx, y, RED);
+            return;
+        }
+        String heading = (search ? "Search: " : "price".equals(what) ? "Price per unit: " : "Amount: ") + want;
         drawScaled(graphics, heading, cx, y, AMBER, 1.5f);
         y += 18;
 

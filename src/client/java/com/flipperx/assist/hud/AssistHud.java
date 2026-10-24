@@ -30,7 +30,8 @@ public final class AssistHud {
     private static final int GOAL_BAR = 4;
     private static final int LIMIT_BAR = 3;
     private static final int ROW_GAP = 6;
-    private static final int MIN_COMPACT = 100;
+    private static final int MIN_WIDTH = 100;
+    private static final int TEXT_GAP = 8;
     private static final int SIGN_HALF = 50;
     private static final int GAP = 6;
 
@@ -98,8 +99,8 @@ public final class AssistHud {
         ModConfig cfg = ModConfig.get();
         int full = Math.min(MAX_WIDTH, Math.max(80, g.guiWidth() - 8));
         int room = room(g, cfg, full);
-        boolean compact = room < full;
-        int width = compact ? Math.max(MIN_COMPACT, room) : full;
+        boolean beside = room >= MIN_WIDTH;
+        int width = beside ? room : full;
         int inner = width - PAD * 2;
         Step step = state.step();
 
@@ -127,23 +128,36 @@ public final class AssistHud {
         int noticeEnd = lines.size();
         if (state.linked()) addLines(lines, state.cookieWarning(), inner, WARN);
 
-        boolean footer = state.linked() && !compact;
-        boolean money = footer && (state.profit() != 0 || running);
-        AssistState.Goal goal = footer ? state.goal() : null;
-        AssistState.Limit limit = footer ? state.limit() : null;
+        boolean money = state.linked() && (state.profit() != 0 || running);
+        AssistState.Goal goal = state.linked() ? state.goal() : null;
+        AssistState.Limit limit = state.linked() ? state.limit() : null;
         if (limit == null) limitShown = -1f;
-        AssistState.Finish finish = footer && running ? state.finish() : null;
+        AssistState.Finish finish = state.linked() && running ? state.finish() : null;
         if (finish == null) finishSolid = finishLight = -1f;
-        List<AssistState.Row> rows = footer ? state.rows() : List.of();
+        List<AssistState.Row> rows = state.linked() ? state.rows() : List.of();
         int bars = (finish != null ? 1 : 0) + (limit != null ? 1 : 0) + (goal != null ? 1 : 0);
+
+        Font font = mc.font;
+        List<FormattedCharSequence> moneySpill = money
+                ? spill(font, font.width("Profit " + compact(state.profit())), moneyRight(state), inner) : List.of();
+        List<List<FormattedCharSequence>> rowSpills = new ArrayList<>();
+        for (AssistState.Row row : rows) rowSpills.add(spill(font, rowLeftWidth(font, row), row.right(), inner));
+        List<FormattedCharSequence> finishSpill = finish != null
+                ? spill(font, font.width(finish.label()), finish.right(), inner) : List.of();
+        List<FormattedCharSequence> limitSpill = limit != null
+                ? spill(font, font.width(LIMIT_LABEL), limitRight(limit), inner) : List.of();
+        List<FormattedCharSequence> goalSpill = goal != null
+                ? spill(font, font.width(goalName(goal)), goalRight(goal), inner) : List.of();
+        int spilled = moneySpill.size() + finishSpill.size() + limitSpill.size() + goalSpill.size();
+        for (List<FormattedCharSequence> r : rowSpills) spilled += r.size();
 
         int titleHeight = Math.max(iconSpace ? 16 : LINE, titles.size() * LINE);
         int footHeight = (money ? LINE : 0) + rows.size() * LINE + (finish != null ? LINE + GOAL_BAR : 0)
                 + (limit != null ? LINE + LIMIT_BAR : 0) + (goal != null ? LINE + GOAL_BAR : 0)
-                + Math.max(0, bars - 1) * ROW_GAP;
+                + Math.max(0, bars - 1) * ROW_GAP + spilled * LINE;
         int targetHeight = PAD * 2 + titleHeight + lines.size() * LINE + footHeight;
 
-        int[] anchor = anchor(g, cfg, width, targetHeight, room >= MIN_COMPACT);
+        int[] anchor = anchor(g, cfg, width, targetHeight, beside);
         if (Float.isNaN(px) || dragging) {
             px = anchor[0]; py = anchor[1];
             if (Float.isNaN(ph)) ph = targetHeight;
@@ -195,34 +209,81 @@ public final class AssistHud {
         }
         moneyX = goalX = Float.NaN;
         if (money) {
-            drawMoney(g, mc.font, state, x + PAD, x + width - PAD, cursor, now);
-            cursor += LINE;
+            drawMoney(g, font, state, x + PAD, x + width - PAD, cursor, now, moneySpill);
+            cursor += LINE * (1 + moneySpill.size());
         }
-        for (AssistState.Row row : rows) {
-            drawRow(g, mc.font, row, x + PAD, x + width - PAD, cursor);
-            cursor += LINE;
+        for (int i = 0; i < rows.size(); i++) {
+            drawRow(g, font, rows.get(i), x + PAD, x + width - PAD, cursor, rowSpills.get(i));
+            cursor += LINE * (1 + rowSpills.get(i).size());
         }
         boolean barAbove = false;
         if (finish != null) {
-            drawFinish(g, mc.font, finish, x + PAD, x + width - PAD, cursor, dt);
-            cursor += LINE + GOAL_BAR;
+            drawFinish(g, font, finish, x + PAD, x + width - PAD, cursor, dt, finishSpill);
+            cursor += LINE * (1 + finishSpill.size()) + GOAL_BAR;
             barAbove = true;
         }
         if (limit != null) {
             if (barAbove) cursor += ROW_GAP;
-            drawLimit(g, mc.font, limit, x + PAD, x + width - PAD, cursor, dt);
-            cursor += LINE + LIMIT_BAR;
+            drawLimit(g, font, limit, x + PAD, x + width - PAD, cursor, dt, limitSpill);
+            cursor += LINE * (1 + limitSpill.size()) + LIMIT_BAR;
             barAbove = true;
         }
         if (goal != null) {
             if (barAbove) cursor += ROW_GAP;
-            drawGoal(g, mc.font, goal, x + PAD, x + width - PAD, cursor, dt);
+            drawGoal(g, font, goal, x + PAD, x + width - PAD, cursor, dt, goalSpill);
         }
         g.disableScissor();
     }
 
+    private static final String LIMIT_LABEL = "Daily limit";
+
+    private static List<FormattedCharSequence> spill(Font font, int leftWidth, String right, int inner) {
+        if (right == null || right.isEmpty() || leftWidth + TEXT_GAP + font.width(right) <= inner) return List.of();
+        return font.split(Component.literal(right), inner);
+    }
+
+    private static int drawRight(GuiGraphicsExtractor g, Font font, String text, List<FormattedCharSequence> spill,
+                                 int left, int right, int top) {
+        if (spill.isEmpty()) {
+            if (!text.isEmpty()) g.text(font, text, right - font.width(text), top, argb(DIM, dim), false);
+            return top + LINE;
+        }
+        int y = top + LINE;
+        for (FormattedCharSequence line : spill) {
+            g.text(font, line, left, y, argb(DIM, dim), false);
+            y += LINE;
+        }
+        return y;
+    }
+
+    private static String moneyRight(AssistState state) {
+        Double rate = state.profitPerHour();
+        return rate == null ? "this session" : compact(rate) + "/h";
+    }
+
+    private static int rowLeftWidth(Font font, AssistState.Row row) {
+        return font.width(row.label().isEmpty() ? "" : row.label() + " ") + font.width(row.value());
+    }
+
+    private static String limitRight(AssistState.Limit limit) {
+        return limit.hoursLeft() != null
+                ? compact(limit.left()) + " left, out in about " + duration(limit.hoursLeft())
+                : "about " + compact(limit.left()) + " left";
+    }
+
+    private static String goalName(AssistState.Goal goal) {
+        return goal.label() == null || goal.label().isBlank() ? compact(goal.target()) : goal.label();
+    }
+
+    private static String goalRight(AssistState.Goal goal) {
+        float frac = goal.target() > 0 ? (float) Math.clamp(goal.progress() / goal.target(), 0.0, 1.0) : 0f;
+        int pct = (int) Math.floor(frac * 100);
+        return frac >= 1f ? "reached" : pct + "%" + (goal.etaHours() != null
+                ? ", about " + hours(goal.etaHours()) + " left" : "");
+    }
+
     private static void drawMoney(GuiGraphicsExtractor g, Font font, AssistState state, int left, int right,
-                                  int top, long now) {
+                                  int top, long now, List<FormattedCharSequence> spill) {
         double target = state.profit();
         if (Double.isNaN(shownProfit)) {
             shownProfit = countFrom = countTo = target;
@@ -252,33 +313,24 @@ public final class AssistHud {
             g.text(font, plus(delta), left + lw + vw + 5, top + lift,
                    argb(delta < 0 ? WARN : AMBER, in * out * dim), false);
         }
-        Double rate = state.profitPerHour();
-        String r = rate == null ? "this session" : compact(rate) + "/h";
-        g.text(font, r, right - font.width(r), top, argb(DIM, dim), false);
+        drawRight(g, font, moneyRight(state), spill, left, right, top);
     }
 
     private static void drawRow(GuiGraphicsExtractor g, Font font, AssistState.Row row, int left, int right,
-                                int top) {
+                                int top, List<FormattedCharSequence> spill) {
         String label = row.label().isEmpty() ? "" : row.label() + " ";
         g.text(font, label, left, top, argb(DIM, dim), false);
         g.text(font, row.value(), left + font.width(label), top, argb(TEXT, dim), false);
-        if (!row.right().isEmpty()) {
-            g.text(font, row.right(), right - font.width(row.right()), top, argb(DIM, dim), false);
-        }
+        drawRight(g, font, row.right(), spill, left, right, top);
     }
 
     private static void drawGoal(GuiGraphicsExtractor g, Font font, AssistState.Goal goal, int left, int right,
-                                 int top, float dt) {
+                                 int top, float dt, List<FormattedCharSequence> spill) {
         float frac = goal.target() > 0 ? (float) Math.clamp(goal.progress() / goal.target(), 0.0, 1.0) : 0f;
         if (goalShown < 0) goalShown = frac;
         goalShown += (frac - goalShown) * approach(dt, GOAL_TAU_MS);
-        String name = goal.label() == null || goal.label().isBlank() ? compact(goal.target()) : goal.label();
-        int pct = (int) Math.floor(frac * 100);
-        String r = frac >= 1f ? "reached" : pct + "%" + (goal.etaHours() != null
-                ? ", about " + hours(goal.etaHours()) + " left" : "");
-        g.text(font, name, left, top, argb(TEXT, dim), false);
-        g.text(font, r, right - font.width(r), top, argb(DIM, dim), false);
-        int bar = top + LINE;
+        g.text(font, goalName(goal), left, top, argb(TEXT, dim), false);
+        int bar = drawRight(g, font, goalRight(goal), spill, left, right, top);
         g.fill(left, bar, right, bar + 2, argb(TRACK, dim));
         int filled = Math.round((right - left) * goalShown);
         if (filled > 0) g.fill(left, bar, left + filled, bar + 2, argb(AMBER, dim));
@@ -287,7 +339,7 @@ public final class AssistHud {
     }
 
     private static void drawFinish(GuiGraphicsExtractor g, Font font, AssistState.Finish finish, int left, int right,
-                                   int top, float dt) {
+                                   int top, float dt, List<FormattedCharSequence> spill) {
         float solid = (float) Math.clamp(finish.solid(), 0.0, 1.0);
         float light = (float) Math.clamp(Math.max(finish.light(), finish.solid()), 0.0, 1.0);
         if (finishSolid < 0) { finishSolid = solid; finishLight = light; }
@@ -295,10 +347,7 @@ public final class AssistHud {
         finishSolid += (solid - finishSolid) * k;
         finishLight += (light - finishLight) * k;
         g.text(font, finish.label(), left, top, argb(TEXT, dim), false);
-        if (!finish.right().isEmpty()) {
-            g.text(font, finish.right(), right - font.width(finish.right()), top, argb(DIM, dim), false);
-        }
-        int bar = top + LINE;
+        int bar = drawRight(g, font, finish.right(), spill, left, right, top);
         g.fill(left, bar, right, bar + 2, argb(TRACK, dim));
         int span = right - left;
         if (finish.time()) {
@@ -313,16 +362,12 @@ public final class AssistHud {
     }
 
     private static void drawLimit(GuiGraphicsExtractor g, Font font, AssistState.Limit limit, int left, int right,
-                                  int top, float dt) {
+                                  int top, float dt, List<FormattedCharSequence> spill) {
         float frac = limit.cap() > 0 ? (float) Math.clamp(limit.used() / limit.cap(), 0.0, 1.0) : 0f;
         if (limitShown < 0) limitShown = frac;
         limitShown += (frac - limitShown) * approach(dt, GOAL_TAU_MS);
-        String r = limit.hoursLeft() != null
-                ? compact(limit.left()) + " left, out in about " + duration(limit.hoursLeft())
-                : "about " + compact(limit.left()) + " left";
-        g.text(font, "Daily limit", left, top, argb(TEXT, dim), false);
-        g.text(font, r, right - font.width(r), top, argb(DIM, dim), false);
-        int bar = top + LINE - 1;
+        g.text(font, LIMIT_LABEL, left, top, argb(TEXT, dim), false);
+        int bar = drawRight(g, font, limitRight(limit), spill, left, right, top) - 1;
         g.fill(left, bar, right, bar + 1, argb(TRACK, dim));
         int filled = Math.round((right - left) * limitShown);
         if (filled > 0) g.fill(left, bar, left + filled, bar + 1, argb(DIM, dim));

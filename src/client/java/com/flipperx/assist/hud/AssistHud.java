@@ -14,6 +14,7 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.gui.screens.inventory.AbstractSignEditScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
 
@@ -29,6 +30,9 @@ public final class AssistHud {
     private static final int GOAL_BAR = 4;
     private static final int LIMIT_BAR = 3;
     private static final int ROW_GAP = 6;
+    private static final int MIN_COMPACT = 100;
+    private static final int SIGN_HALF = 50;
+    private static final int GAP = 6;
 
     private static final int BG = 0x121212;
     private static final float BG_ALPHA = 0xD0 / 255f;
@@ -92,7 +96,10 @@ public final class AssistHud {
         }
 
         ModConfig cfg = ModConfig.get();
-        int width = Math.min(MAX_WIDTH, Math.max(80, g.guiWidth() - 8));
+        int full = Math.min(MAX_WIDTH, Math.max(80, g.guiWidth() - 8));
+        int room = room(g, cfg, full);
+        boolean compact = room < full;
+        int width = compact ? Math.max(MIN_COMPACT, room) : full;
         int inner = width - PAD * 2;
         Step step = state.step();
 
@@ -120,13 +127,14 @@ public final class AssistHud {
         int noticeEnd = lines.size();
         if (state.linked()) addLines(lines, state.cookieWarning(), inner, WARN);
 
-        boolean money = state.linked() && (state.profit() != 0 || running);
-        AssistState.Goal goal = state.linked() ? state.goal() : null;
-        AssistState.Limit limit = state.linked() ? state.limit() : null;
+        boolean footer = state.linked() && !compact;
+        boolean money = footer && (state.profit() != 0 || running);
+        AssistState.Goal goal = footer ? state.goal() : null;
+        AssistState.Limit limit = footer ? state.limit() : null;
         if (limit == null) limitShown = -1f;
-        AssistState.Finish finish = state.linked() && running ? state.finish() : null;
+        AssistState.Finish finish = footer && running ? state.finish() : null;
         if (finish == null) finishSolid = finishLight = -1f;
-        List<AssistState.Row> rows = state.linked() ? state.rows() : List.of();
+        List<AssistState.Row> rows = footer ? state.rows() : List.of();
         int bars = (finish != null ? 1 : 0) + (limit != null ? 1 : 0) + (goal != null ? 1 : 0);
 
         int titleHeight = Math.max(iconSpace ? 16 : LINE, titles.size() * LINE);
@@ -135,7 +143,7 @@ public final class AssistHud {
                 + Math.max(0, bars - 1) * ROW_GAP;
         int targetHeight = PAD * 2 + titleHeight + lines.size() * LINE + footHeight;
 
-        int[] anchor = anchor(g, cfg, width, targetHeight);
+        int[] anchor = anchor(g, cfg, width, targetHeight, room >= MIN_COMPACT);
         if (Float.isNaN(px) || dragging) {
             px = anchor[0]; py = anchor[1];
             if (Float.isNaN(ph)) ph = targetHeight;
@@ -344,24 +352,41 @@ public final class AssistHud {
         return ease(Math.max(0f, Math.min(in, out)));
     }
 
-    private static int[] anchor(GuiGraphicsExtractor g, ModConfig cfg, int width, int height) {
+    private static int room(GuiGraphicsExtractor g, ModConfig cfg, int full) {
+        if (cfg.hudX >= 0) return full;
+        Screen screen = GameUtil.currentScreen();
+        if (screen instanceof AbstractContainerScreen<?> cs) {
+            AbstractContainerScreenAccessor acc = (AbstractContainerScreenAccessor) cs;
+            int left = acc.bzassist$getLeftPos();
+            int right = left + acc.bzassist$getImageWidth();
+            return Math.min(full, Math.max(g.guiWidth() - right - GAP - 2, left - GAP - 2));
+        }
+        if (screen instanceof AbstractSignEditScreen) {
+            return Math.min(full, g.guiWidth() / 2 - SIGN_HALF - GAP - 2);
+        }
+        return full;
+    }
+
+    private static int[] anchor(GuiGraphicsExtractor g, ModConfig cfg, int width, int height, boolean beside) {
         int maxX = Math.max(0, g.guiWidth() - width);
         int maxY = Math.max(0, g.guiHeight() - height);
         if (cfg.hudX >= 0) {
             return new int[]{Math.clamp(cfg.hudX, 0, maxX), Math.clamp(cfg.hudY, 0, maxY)};
         }
         Screen screen = GameUtil.currentScreen();
-        if (screen instanceof AbstractContainerScreen<?> cs) {
+        if (beside && screen instanceof AbstractContainerScreen<?> cs) {
             AbstractContainerScreenAccessor acc = (AbstractContainerScreenAccessor) cs;
             int left = acc.bzassist$getLeftPos();
             int top = acc.bzassist$getTopPos();
-            int right = left + acc.bzassist$getImageWidth() + 6;
+            int right = left + acc.bzassist$getImageWidth() + GAP;
             if (right + width <= g.guiWidth()) {
                 return new int[]{right, Math.clamp(top, 0, maxY)};
             }
-            if (left - width - 6 >= 0) {
-                return new int[]{left - width - 6, Math.clamp(top, 0, maxY)};
-            }
+            return new int[]{Math.max(0, left - width - GAP), Math.clamp(top, 0, maxY)};
+        }
+        if (beside && screen instanceof AbstractSignEditScreen) {
+            int x = g.guiWidth() / 2 - SIGN_HALF - GAP - width;
+            return new int[]{Math.max(0, x), Math.clamp(cfg.hudY, 0, maxY)};
         }
         return new int[]{(g.guiWidth() - width) / 2, Math.clamp(cfg.hudY, 0, maxY)};
     }

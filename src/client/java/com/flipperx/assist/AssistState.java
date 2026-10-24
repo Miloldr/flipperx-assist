@@ -4,11 +4,28 @@ import com.flipperx.assist.hud.ItemIcon;
 import com.google.gson.JsonObject;
 
 public final class AssistState {
+    public record SignOf(String what, String from, boolean prefix) {
+        public static final SignOf NONE = new SignOf("", "", false);
+
+        public static SignOf from(com.google.gson.JsonElement e) {
+            if (e == null || !e.isJsonObject()) return NONE;
+            JsonObject o = e.getAsJsonObject();
+            return new SignOf(Step.str(o, "for", ""), Step.str(o, "from", "").toLowerCase(java.util.Locale.ROOT),
+                    o.has("prefix") && !o.get("prefix").isJsonNull() && o.get("prefix").getAsBoolean());
+        }
+
+        public boolean opensFrom(String menuTitle) {
+            if (from.isEmpty()) return true;
+            String title = menuTitle == null ? "" : menuTitle;
+            return prefix ? title.startsWith(from) : title.equals(from);
+        }
+    }
+
     public record Step(String kind, String text, int slot, String click,
                        String label, String hint, String itemId, String itemName, String icon,
-                       ItemIcon.Look look) {
+                       ItemIcon.Look look, SignOf signOf) {
         public static final Step NONE =
-                new Step("wait", "", -1, "left", "", "", null, null, null, null);
+                new Step("wait", "", -1, "left", "", "", null, null, null, null, SignOf.NONE);
 
         public static Step from(JsonObject o) {
             return new Step(
@@ -21,10 +38,11 @@ public final class AssistState {
                     str(o, "item_id", null),
                     str(o, "item_name", null),
                     str(o, "icon", null),
-                    ItemIcon.Look.from(o.get("look")));
+                    ItemIcon.Look.from(o.get("look")),
+                    SignOf.from(o.get("sign_of")));
         }
 
-        private static String str(JsonObject o, String key, String fallback) {
+        static String str(JsonObject o, String key, String fallback) {
             return o.has(key) && !o.get(key).isJsonNull() ? o.get(key).getAsString() : fallback;
         }
 
@@ -40,7 +58,7 @@ public final class AssistState {
             boolean same = current != null && itemId != null && itemId.equals(current.itemId);
             return new Step(kind, text, atSlot, click, label, hint, itemId,
                     same ? current.itemName : itemName, same ? current.icon : icon,
-                    same ? current.look : look);
+                    same ? current.look : look, signOf);
         }
 
         public boolean reads(Step other) {

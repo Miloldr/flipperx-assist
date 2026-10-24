@@ -111,22 +111,32 @@ public class SocketCheck {
         check(!state.running() && state.status().contains("idle"), "Server stop reason was ignored");
         state.reset();
         check(state.step() == AssistState.Step.NONE && state.profit() == 0, "Account reset leaked state");
-        AssistState.Step click = new AssistState.Step("click", "", 11, "left", "Click Coal", "", "COAL", "Coal", null, null);
+        AssistState.Step click = new AssistState.Step("click", "", 11, "left", "Click Coal", "", "COAL", "Coal", null, null, AssistState.SignOf.NONE);
         state.step(click);
         state.current(false);
         check(state.step() == click && !state.current(), "A menu transition blanked the instruction");
-        state.receiveStep(new AssistState.Step("wait", "", -1, "left", "Loading", "", null, null, null, null), true);
+        state.receiveStep(new AssistState.Step("wait", "", -1, "left", "Loading", "", null, null, null, null, AssistState.SignOf.NONE), true);
         check(state.step() == click && !state.current(), "A loading reply replaced the readable instruction");
         long since = state.stepSince();
         state.receiveStep(click, false);
         check(state.stepSince() == since, "A repeat of the same step restarted its fade");
-        AssistState.Step next = new AssistState.Step("click", "", 11, "left", "Click Create Buy Order", "", "COAL", "Coal", null, null);
+        AssistState.Step next = new AssistState.Step("click", "", 11, "left", "Click Create Buy Order", "", "COAL", "Coal", null, null, AssistState.SignOf.NONE);
         state.receiveStep(next, false);
         check(state.step() == next && state.current(), "A new action at the same slot did not advance");
         check(state.previous() == click, "The replaced step was not kept for the cross-fade");
         state.disconnected();
         check(state.step() == AssistState.Step.NONE && !state.current(), "Disconnect retained actionable guidance");
-        System.out.println("Socket/state checks passed: single connection, ordered sends, compressed sends, stale callbacks, reconnect backoff, stop/reset.");
+        AssistState.Step amount = AssistState.Step.from(JsonParser.parseString(
+                "{\"kind\":\"sign\",\"text\":\"15\",\"sign_of\":{\"for\":\"amount\",\"from\":\"How many are you selling?\",\"prefix\":false}}").getAsJsonObject());
+        check(amount.signOf().opensFrom("how many are you selling?"), "The amount sign was refused after its own menu");
+        check(!amount.signOf().opensFrom("at what price are you selling?"), "The amount was offered on the custom price sign");
+        check(!amount.signOf().opensFrom(""), "The amount was offered on a sign with no menu before it");
+        AssistState.Step search = AssistState.Step.from(JsonParser.parseString(
+                "{\"kind\":\"sign\",\"text\":\"coal\",\"sign_of\":{\"for\":\"search\",\"from\":\"bazaar\",\"prefix\":true}}").getAsJsonObject());
+        check(search.signOf().opensFrom("bazaar \u279c farming"), "The search sign was refused after the bazaar menu");
+        check(AssistState.Step.from(JsonParser.parseString("{\"kind\":\"sign\",\"text\":\"5\"}").getAsJsonObject())
+                .signOf().opensFrom("anything"), "A step from an older server lost autosign");
+        System.out.println("Socket/state checks passed: single connection, ordered sends, compressed sends, stale callbacks, reconnect backoff, stop/reset, sign origin.");
     }
 
     static final class Peer implements AutoCloseable {

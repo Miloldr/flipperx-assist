@@ -1,5 +1,7 @@
 package com.flipperx.assist.screen;
 
+import com.flipperx.assist.game.Compat;
+import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.platform.NativeImage;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
@@ -19,7 +21,12 @@ final class Snapshot {
 
     static void take(Consumer<Saved> done) {
         Minecraft mc = Minecraft.getInstance();
-        Screenshot.takeScreenshot(mc.gameRenderer.mainRenderTarget(), image ->
+        RenderTarget target = Compat.mainRenderTarget();
+        if (target == null) {
+            done.accept(null);
+            return;
+        }
+        Screenshot.takeScreenshot(target, image ->
                 Util.ioPool().execute(() -> {
                     Saved saved;
                     try (image) {

@@ -191,10 +191,10 @@ public class AssistClient implements ClientModInitializer {
         KeyMapping.Category category = KeyMapping.Category.register(
                 Identifier.fromNamespaceAndPath("bzassist", "general"));
         startKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                "key.bzassist.start", Compat.keyboard(), Compat.KEY_RBRACKET,
+                "key.bzassist.start", Compat.keyboard(), Compat.KEY_LBRACKET,
                 category));
         stopKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                "key.bzassist.stop", Compat.keyboard(), Compat.KEY_LBRACKET,
+                "key.bzassist.stop", Compat.keyboard(), Compat.KEY_RBRACKET,
                 category));
         commandKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.bzassist.command", Compat.keyboard(), Compat.KEY_B,
@@ -1137,11 +1137,13 @@ public class AssistClient implements ClientModInitializer {
     }
 
     public void openReplay(String url, String id) {
+        boolean opened;
         try {
-            Util.getPlatform().openUri(URI.create(url));
+            opened = Compat.openUri(URI.create(url));
         } catch (RuntimeException e) {
-            chat(Component.literal("Replay: ").append(Chat.link(Chat.shortUrl(url), url)));
+            opened = false;
         }
+        if (!opened) chat(Component.literal("Replay: ").append(Chat.link(Chat.shortUrl(url), url)));
         if (id == null || !STATE.linked() || !socket.connected()) return;
         JsonObject o = new JsonObject();
         o.addProperty("type", "share");

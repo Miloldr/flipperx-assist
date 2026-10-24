@@ -40,6 +40,8 @@ public final class SettingsScreen extends Screen {
     private static final int SWATCH = 10;
     private static final int SWATCH_GAP = 3;
     private static final int HEX_W = 52;
+    private static final int RECENT = 4;
+    private static final int RECENT_GAP = 8;
     private static final int PREVIEW_ROWS = 3;
     private static final int PREVIEW_W = 176;
     private static final int PREVIEW_H = PREVIEW_ROWS * 18 + 24;
@@ -123,7 +125,7 @@ public final class SettingsScreen extends Screen {
         int boxY = colorRow + (ROW - CONTROL_H) / 2;
         hex = new EditBox(font, boxX + 5, boxY + 4, HEX_W - 7, 8, Component.literal("Color"));
         hex.setBordered(false);
-        hex.setMaxLength(7);
+        hex.setMaxLength(24);
         hex.setTextColor(0xFFE8E8E8);
         hex.setValue(SlotHighlight.formatColor(Look.of(cfg).rgb()));
         hex.setResponder(text -> {
@@ -183,7 +185,22 @@ public final class SettingsScreen extends Screen {
     @Override
     public void removed() {
         sendInputs();
+        rememberColor();
         super.removed();
+    }
+
+    private void rememberColor() {
+        Integer rgb = SlotHighlight.parseColor(cfg.highlightColor);
+        if (rgb == null) return;
+        for (int preset : SWATCHES) {
+            if (preset == rgb) return;
+        }
+        String color = SlotHighlight.formatColor(rgb);
+        if (!cfg.recentColors.isEmpty() && color.equals(cfg.recentColors.get(0))) return;
+        cfg.recentColors.remove(color);
+        cfg.recentColors.add(0, color);
+        while (cfg.recentColors.size() > RECENT) cfg.recentColors.remove(cfg.recentColors.size() - 1);
+        cfg.save();
     }
 
     @Override
@@ -219,7 +236,7 @@ public final class SettingsScreen extends Screen {
         y += PREVIEW_H + 8;
 
         label(g, f, "Color", left, y);
-        drawSwatches(g, right - HEX_W - 8, y, look, mouseX, mouseY);
+        drawSwatches(g, right - HEX_W - 8, left + f.width("Color") + 8, y, look, mouseX, mouseY);
         int boxY = y + (ROW - CONTROL_H) / 2;
         g.fill(right - HEX_W, boxY, right, boxY + CONTROL_H, color(BUTTON));
         box(g, right - HEX_W, boxY, right, boxY + CONTROL_H, color(hex.isFocused() ? 0x5A5A5A : 0x3A3A3A));
@@ -362,26 +379,42 @@ public final class SettingsScreen extends Screen {
         g.text(font, says, px + w - 6 - font.width(says), py + h - 11, color(0x3F3F3F), false);
     }
 
-    private void drawSwatches(GuiGraphicsExtractor g, int rightEdge, int rowY, Look look, int mouseX, int mouseY) {
+    private void drawSwatches(GuiGraphicsExtractor g, int rightEdge, int leftEdge, int rowY, Look look,
+                              int mouseX, int mouseY) {
         int span = SWATCHES.length * SWATCH + (SWATCHES.length - 1) * SWATCH_GAP;
-        int sx = rightEdge - span;
+        List<Integer> recent = new ArrayList<>();
+        for (String c : cfg.recentColors) {
+            Integer rgb = SlotHighlight.parseColor(c);
+            if (rgb == null) continue;
+            int more = recent.size() * (SWATCH + SWATCH_GAP) + SWATCH + RECENT_GAP;
+            if (rightEdge - span - more < leftEdge) break;
+            recent.add(rgb);
+        }
+        int sx = rightEdge - span - (recent.isEmpty() ? 0 : recent.size() * (SWATCH + SWATCH_GAP) - SWATCH_GAP + RECENT_GAP);
         int sy = rowY + (ROW - SWATCH) / 2;
+        for (int i = 0; i < recent.size(); i++) {
+            swatch(g, recent.get(i), sx, sy, look, mouseX, mouseY);
+            sx += SWATCH + (i == recent.size() - 1 ? RECENT_GAP : SWATCH_GAP);
+        }
         for (int rgb : SWATCHES) {
-            boolean picked = rgb == look.rgb();
-            boolean hover = mouseX >= sx - 1 && mouseX < sx + SWATCH + 1 && mouseY >= sy - 1 && mouseY < sy + SWATCH + 1;
-            if (picked || hover) {
-                box(g, sx - 2, sy - 2, sx + SWATCH + 2, sy + SWATCH + 2,
-                        color(picked ? AssistHud.TEXT : 0x5A5A5A));
-            }
-            g.fill(sx, sy, sx + SWATCH, sy + SWATCH, color(rgb));
-            int pick = rgb;
-            hits.add(new Hit(sx - 1, sy - 1, sx + SWATCH + 1, sy + SWATCH + 1, step -> {
-                cfg.highlightColor = SlotHighlight.formatColor(pick);
-                cfg.save();
-                hex.setValue(cfg.highlightColor);
-            }));
+            swatch(g, rgb, sx, sy, look, mouseX, mouseY);
             sx += SWATCH + SWATCH_GAP;
         }
+    }
+
+    private void swatch(GuiGraphicsExtractor g, int rgb, int sx, int sy, Look look, int mouseX, int mouseY) {
+        boolean picked = rgb == look.rgb();
+        boolean hover = mouseX >= sx - 1 && mouseX < sx + SWATCH + 1 && mouseY >= sy - 1 && mouseY < sy + SWATCH + 1;
+        if (picked || hover) {
+            box(g, sx - 2, sy - 2, sx + SWATCH + 2, sy + SWATCH + 2,
+                    color(picked ? AssistHud.TEXT : 0x5A5A5A));
+        }
+        g.fill(sx, sy, sx + SWATCH, sy + SWATCH, color(rgb));
+        hits.add(new Hit(sx - 1, sy - 1, sx + SWATCH + 1, sy + SWATCH + 1, step -> {
+            cfg.highlightColor = SlotHighlight.formatColor(rgb);
+            cfg.save();
+            hex.setValue(cfg.highlightColor);
+        }));
     }
 
     private void label(GuiGraphicsExtractor g, Font f, String text, int x, int rowY) {

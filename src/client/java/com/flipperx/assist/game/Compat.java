@@ -1,5 +1,6 @@
 package com.flipperx.assist.game;
 
+import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.platform.InputConstants;
 
 import net.minecraft.client.Minecraft;
@@ -10,9 +11,11 @@ import net.minecraft.client.gui.components.ChatComponent;
 import net.minecraft.client.gui.components.PlayerTabOverlay;
 import net.minecraft.client.gui.components.toasts.ToastManager;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
+import net.minecraft.util.Util;
 import net.minecraft.world.item.Item;
 
 import java.lang.invoke.MethodHandle;
@@ -20,6 +23,7 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.net.URI;
 
 public final class Compat {
     private Compat() {}
@@ -60,6 +64,18 @@ public final class Compat {
             MethodType.methodType(ToastManager.class)));
     private static final MethodHandle MC_GET_TOASTS = find(() -> LOOKUP.findVirtual(Minecraft.class,
             "getToastManager", MethodType.methodType(ToastManager.class)));
+
+    private static final MethodHandle OS_OPEN_URI = find(() -> LOOKUP.findVirtual(Util.OS.class, "openUri",
+            MethodType.methodType(void.class, URI.class)));
+    private static final MethodHandle BLAZE_OPEN_URI = OS_OPEN_URI != null ? null
+            : find(() -> LOOKUP.findStatic(Class.forName("com.mojang.blaze3d.Blaze3D"), "openUri",
+                    MethodType.methodType(void.class, URI.class)));
+
+    private static final MethodHandle GR_TARGET = find(() -> LOOKUP.findVirtual(GameRenderer.class,
+            "mainRenderTarget", MethodType.methodType(RenderTarget.class)));
+    private static final MethodHandle MC_TARGET = GR_TARGET != null ? null
+            : find(() -> LOOKUP.findVirtual(Minecraft.class, "getMainRenderTarget",
+                    MethodType.methodType(RenderTarget.class)));
 
     private static final Object TEXTURED = staticField(RenderPipelines.class, "GUI_TEXTURED");
     private static final MethodHandle BLIT = TEXTURED == null ? null : find(() -> {
@@ -118,6 +134,33 @@ public final class Compat {
         } catch (Throwable t) {
             return null;
         }
+    }
+
+    public static boolean openUri(URI uri) {
+        try {
+            if (OS_OPEN_URI != null) {
+                OS_OPEN_URI.invoke(Util.getPlatform(), uri);
+                return true;
+            }
+            if (BLAZE_OPEN_URI != null) {
+                BLAZE_OPEN_URI.invoke(uri);
+                return true;
+            }
+        } catch (Throwable t) {
+            return false;
+        }
+        return false;
+    }
+
+    public static RenderTarget mainRenderTarget() {
+        Minecraft mc = Minecraft.getInstance();
+        try {
+            if (GR_TARGET != null) return (RenderTarget) GR_TARGET.invoke(mc.gameRenderer);
+            if (MC_TARGET != null) return (RenderTarget) MC_TARGET.invoke(mc);
+        } catch (Throwable t) {
+            return null;
+        }
+        return null;
     }
 
     public static ToastManager toasts() {

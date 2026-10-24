@@ -1,9 +1,11 @@
 package com.flipperx.assist.screen;
 
 import com.flipperx.assist.AssistClient;
+import com.flipperx.assist.game.Compat;
 import com.flipperx.assist.hud.AssistHud;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.platform.NativeImage;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
@@ -65,7 +67,7 @@ public final class Flex {
     static boolean press(Offer o) {
         if (!pressable(o)) return false;
         if (o.id() == null) {
-            if (o.url() != null) Util.getPlatform().openUri(URI.create(o.url()));
+            if (o.url() != null) Compat.openUri(URI.create(o.url()));
             return false;
         }
         DONE.remove(o.id());
@@ -80,7 +82,22 @@ public final class Flex {
     static void capture(Offer o) {
         STATUS.put(o.id(), "Posting...");
         Minecraft mc = Minecraft.getInstance();
-        Screenshot.takeScreenshot(mc.gameRenderer.mainRenderTarget(), image -> {
+        RenderTarget target = Compat.mainRenderTarget();
+        if (target == null) {
+            hideChat = false;
+            result(o.id(), false, "Screenshot failed");
+            return;
+        }
+        try {
+            shoot(mc, target, o);
+        } catch (Throwable t) {
+            hideChat = false;
+            result(o.id(), false, "Screenshot failed");
+        }
+    }
+
+    private static void shoot(Minecraft mc, RenderTarget target, Offer o) {
+        Screenshot.takeScreenshot(target, image -> {
             hideChat = false;
             Util.ioPool().execute(() -> {
                 String data;

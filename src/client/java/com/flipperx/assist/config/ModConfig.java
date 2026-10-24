@@ -8,7 +8,9 @@ import net.fabricmc.loader.api.FabricLoader;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -34,6 +36,7 @@ public final class ModConfig {
     public int highlightWidth = 2;
     public String highlightPulse = "ALWAYS";
     public boolean highlightBlue = false;
+    public List<String> recentColors = new ArrayList<>();
     public int replayGlows = 0;
     public boolean replayClicked = false;
     public String lastVersion;
@@ -54,6 +57,7 @@ public final class ModConfig {
                 ModConfig c = GSON.fromJson(o, ModConfig.class);
                 if (c != null) {
                     if (c.tokens == null) c.tokens = new HashMap<>();
+                    if (c.recentColors == null) c.recentColors = new ArrayList<>();
                     if (!c.tabFillReset) {
                         c.tabFill = false;
                         c.tabFillReset = true;

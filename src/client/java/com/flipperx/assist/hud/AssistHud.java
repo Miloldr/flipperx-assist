@@ -104,10 +104,11 @@ public final class AssistHud {
         float age = now - state.stepSince();
         float fade = running ? ease(Math.min(1f, age / FADE_MS)) : 1f;
         List<Line> titles = new ArrayList<>();
-        addLines(titles, title, inner - (iconSpace ? 20 : 0), AMBER);
+        addLines(titles, title, inner - (iconSpace ? 20 : 0), running ? titleColor(step, cfg) : AMBER);
         List<Line> oldTitles = new ArrayList<>();
         if (running && fade < 1f && state.previous() != Step.NONE) {
-            addLines(oldTitles, headline(state.previous()), inner - (iconSpace ? 20 : 0), AMBER);
+            addLines(oldTitles, headline(state.previous()), inner - (iconSpace ? 20 : 0),
+                    titleColor(state.previous(), cfg));
         }
 
         List<Line> lines = new ArrayList<>();
@@ -378,6 +379,10 @@ public final class AssistHud {
         for (FormattedCharSequence line : Minecraft.getInstance().font.split(Component.literal(text), width)) {
             lines.add(new Line(line, color));
         }
+    }
+
+    private static int titleColor(Step step, ModConfig cfg) {
+        return step.isClick() && "right".equals(step.click()) ? SlotHighlight.Look.of(cfg).rightRgb() : AMBER;
     }
 
     private static String headline(Step step) {

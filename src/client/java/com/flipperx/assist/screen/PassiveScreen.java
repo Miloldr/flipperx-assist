@@ -119,6 +119,10 @@ public final class PassiveScreen extends Screen {
         g.pose().scale(BIG, BIG);
         g.text(f, AssistHud.plus(s.total() * k), 0, 0, color(AssistHud.AMBER), false);
         g.pose().popMatrix();
+        if (s.work() != null) {
+            int wx = left + f.width(AssistHud.plus(s.total())) * BIG + 6;
+            if (wx + f.width(s.work()) <= right) word(g, f, s.work(), wx, y + 7 * BIG - 7, AssistHud.DIM);
+        }
         y += 8 * BIG + 6;
 
         int cx = word(g, f, AssistHud.plus(s.since()), left, y, AssistHud.AMBER) + 5;
@@ -260,24 +264,32 @@ public final class PassiveScreen extends Screen {
         g.disableScissor();
 
         int hovered = -1;
-        for (int i = 0; i < n; i++) {
-            if (sx[i] > clipR) break;
-            float pop = AssistHud.easeOut3(Math.min(1f, Math.max(0f, (clipR - sx[i]) / 30f)));
-            boolean last = i == n - 1;
-            int r = Math.max(1, Math.round((last ? 4 : 3) * pop));
-            boolean hover = Math.abs(mouseX - (sx[i] + 1)) <= 4 && Math.abs(mouseY - (sy[i] + 1)) <= 4;
-            if (hover) hovered = i;
-            int cxx = sx[i] + 1, cyy = sy[i] + 1;
-            g.fill(cxx - r - 1, cyy - r - 1, cxx + r + 1, cyy + r + 1, color(CARD));
-            g.fill(cxx - r, cyy - r, cxx + r, cyy + r, color(last ? AssistHud.AMBER : AssistHud.TEXT));
-            if (hover && !last) box(g, cxx - r - 1, cyy - r - 1, cxx + r + 1, cyy + r + 1, color(AssistHud.AMBER));
+        if (mouseY >= plotT - 4 && mouseY <= plotB + 2) {
+            int best = 5;
+            for (int i = 0; i < n && sx[i] <= clipR; i++) {
+                int d = Math.abs(mouseX - (sx[i] + 1));
+                if (d <= best) {
+                    best = d;
+                    hovered = i;
+                }
+            }
         }
+        if (n > 0 && sx[n - 1] <= clipR) {
+            float pop = AssistHud.easeOut3(Math.min(1f, Math.max(0f, (clipR - sx[n - 1]) / 30f)));
+            dot(g, sx[n - 1] + 1, sy[n - 1] + 1, Math.max(1, Math.round(3 * pop)), AssistHud.AMBER);
+        }
+        if (hovered >= 0 && hovered != n - 1) dot(g, sx[hovered] + 1, sy[hovered] + 1, 2, AssistHud.TEXT);
         if (hovered >= 0 && reveal >= 1f) {
             String when = WHEN.format(Instant.ofEpochMilli(ts[hovered]).atZone(zone));
             g.setComponentTooltipForNextFrame(f, List.of(
                     Component.literal(AssistHud.plus(ps[hovered])).withStyle(st -> st.withColor(AssistHud.AMBER)),
                     Component.literal(when).withStyle(ChatFormatting.GRAY)), mouseX, mouseY);
         }
+    }
+
+    private void dot(GuiGraphicsExtractor g, int cx, int cy, int r, int rgb) {
+        g.fill(cx - r - 1, cy - r - 1, cx + r + 1, cy + r + 1, color(CARD));
+        g.fill(cx - r, cy - r, cx + r, cy + r, color(rgb));
     }
 
     private int y(double v, int topY, int bottom) {

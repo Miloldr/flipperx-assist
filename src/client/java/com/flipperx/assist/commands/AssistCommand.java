@@ -7,9 +7,13 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 
+import java.util.Locale;
+
 public final class AssistCommand {
     public static final String NAME = "flipperx";
     private static final String[] FINISH_SUGGESTIONS = {"45min", "1h", "2h", "25m", "100m", "off"};
+    private static final String[] PASSIVE_SUGGESTIONS = {"stop", "notify"};
+    private static final String[] GOAL_SUGGESTIONS = {"+100m", "1b Hyperion", "clear"};
 
     private AssistCommand() {}
 
@@ -40,10 +44,19 @@ public final class AssistCommand {
                             AssistClient.get().goal("");
                             return 1;
                         })
-                        .then(ClientCommands.argument("text", StringArgumentType.greedyString()).executes(ctx -> {
-                            AssistClient.get().goal(StringArgumentType.getString(ctx, "text"));
-                            return 1;
-                        })))
+                        .then(ClientCommands.argument("text", StringArgumentType.greedyString())
+                                .suggests((ctx, builder) -> {
+                                    for (String s : GOAL_SUGGESTIONS) {
+                                        if (s.toLowerCase(Locale.ROOT).startsWith(builder.getRemainingLowerCase())) {
+                                            builder.suggest(s);
+                                        }
+                                    }
+                                    return builder.buildFuture();
+                                })
+                                .executes(ctx -> {
+                                    AssistClient.get().goal(StringArgumentType.getString(ctx, "text"));
+                                    return 1;
+                                })))
                 .then(ClientCommands.literal("finish")
                         .executes(ctx -> {
                             AssistClient.get().finish("", false);
@@ -82,18 +95,18 @@ public final class AssistCommand {
                             AssistClient.get().passive("");
                             return 1;
                         })
-                        .then(ClientCommands.literal("no").executes(ctx -> {
-                            AssistClient.get().passive("no");
-                            return 1;
-                        }))
-                        .then(ClientCommands.literal("later").executes(ctx -> {
-                            AssistClient.get().passive("later");
-                            return 1;
-                        }))
-                        .then(ClientCommands.literal("notify").executes(ctx -> {
-                            AssistClient.get().passive("notify");
-                            return 1;
-                        })))
+                        .then(ClientCommands.argument("choice", StringArgumentType.word())
+                                .suggests((ctx, builder) -> {
+                                    for (String s : PASSIVE_SUGGESTIONS) {
+                                        if (s.startsWith(builder.getRemainingLowerCase())) builder.suggest(s);
+                                    }
+                                    return builder.buildFuture();
+                                })
+                                .executes(ctx -> {
+                                    AssistClient.get().passive(StringArgumentType.getString(ctx, "choice")
+                                            .toLowerCase(Locale.ROOT));
+                                    return 1;
+                                })))
                 .then(ClientCommands.literal("notify")
                         .then(ClientCommands.literal("off").executes(ctx -> {
                             AssistClient.get().comebackReminders(false, false);

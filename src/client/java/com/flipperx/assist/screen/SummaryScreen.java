@@ -23,6 +23,7 @@ import org.lwjgl.glfw.GLFW;
 import java.util.List;
 
 public final class SummaryScreen extends Screen {
+    private boolean byPlayer;
     private static final int PAD = 10;
     private static final int MAX_W = 300;
     private static final int LINE = 11;
@@ -547,10 +548,24 @@ public final class SummaryScreen extends Screen {
     }
 
     @Override
+    protected void init() {
+        super.init();
+        byPlayer = false;
+        AssistClient client = AssistClient.get();
+        if (client != null) client.summaryShown();
+    }
+
+    @Override
+    public void onClose() {
+        byPlayer = true;
+        super.onClose();
+    }
+
+    @Override
     public void removed() {
         if (flexStage != 0) Flex.cancel();
         AssistClient client = AssistClient.get();
-        if (client != null) client.summaryClosed();
+        if (client != null && (byPlayer || !client.summaryPushedOff())) client.summaryClosed();
         super.removed();
     }
 

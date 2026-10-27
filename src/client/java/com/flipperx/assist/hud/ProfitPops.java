@@ -20,7 +20,7 @@ public final class ProfitPops {
     private static final float POP_IN_MS = 170f;
     private static final float RISE = 20f;
     private static final float BIG_RISE = 26f;
-    private static final long MERGE_MS = 1200;
+    private static final long MERGE_MS = 1600;
 
     private static final int LOSS = 0xD27C78;
     private static final int SMALL = 0xDADADA;
@@ -57,11 +57,14 @@ public final class ProfitPops {
             x = w.getGuiScaledWidth() / 2f;
             y = w.getGuiScaledHeight() / 3f;
         }
-        Pop last = POPS.isEmpty() ? null : POPS.getLast();
-        if (last != null && last.rise() > 0 && now - last.born() < MERGE_MS
-                && Math.abs(last.x() - x) < 1f && Math.abs(last.y() - y) < 1f) {
-            POPS.removeLast();
-            profit += last.amount();
+        for (int i = POPS.size() - 1; i >= 0; i--) {
+            Pop p = POPS.get(i);
+            if (p.rise() > 0 && now - p.born() < MERGE_MS
+                    && Math.abs(p.x() - x) < 1f && Math.abs(p.y() - y) < 1f) {
+                POPS.remove(i);
+                profit += p.amount();
+                break;
+            }
         }
         int color = profit < 0 ? LOSS : profit < 100_000 ? SMALL : AssistHud.AMBER;
         int scale = profit >= 1_000_000 ? 2 : 1;

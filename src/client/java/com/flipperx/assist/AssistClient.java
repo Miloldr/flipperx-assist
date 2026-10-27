@@ -131,9 +131,15 @@ public class AssistClient implements ClientModInitializer {
     private static final long GREET_WAIT_MS = 10_000;
     private Summary lastSummary;
     private long summaryOpenUntil;
+    private long summaryAt;
+    private int summaryReopens;
     private PassiveSummary lastPassive;
     private long passiveOpenUntil;
+    private long passiveAt;
+    private int passiveReopens;
     private static final long SUMMARY_WAIT_MS = 60_000;
+    private static final long SUMMARY_SETTLE_MS = 800;
+    private static final int SUMMARY_REOPENS = 3;
     private static final long FIRST_REMINDER_MS = 2 * 60_000;
     private static final long REMINDER_EVERY_MS = 20 * 60_000;
     private long nextReminderAt;
@@ -586,26 +592,59 @@ public class AssistClient implements ClientModInitializer {
     }
 
     private void maybeOpenSummary() {
-        maybeOpenPassive();
-        if (lastSummary == null || summaryOpenUntil == 0) return;
-        if (System.currentTimeMillis() > summaryOpenUntil) {
-            summaryOpenUntil = 0;
-            return;
+        if (passiveAt >= summaryAt) {
+            if (!maybeOpenPassive()) maybeOpenSession();
+        } else if (!maybeOpenSession()) {
+            maybeOpenPassive();
         }
-        if (GameUtil.currentScreen() != null) return;
-        summaryOpenUntil = 0;
-        Compat.setScreen(new SummaryScreen(lastSummary));
     }
 
-    private void maybeOpenPassive() {
-        if (lastPassive == null || passiveOpenUntil == 0) return;
-        if (System.currentTimeMillis() > passiveOpenUntil) {
-            passiveOpenUntil = 0;
-            return;
+    private boolean maybeOpenSession() {
+        if (lastSummary == null || summaryOpenUntil == 0) return false;
+        long now = System.currentTimeMillis();
+        if (now > summaryOpenUntil) {
+            summaryOpenUntil = 0;
+            return false;
         }
-        if (GameUtil.currentScreen() != null) return;
+        if (now - summaryAt < SUMMARY_SETTLE_MS || GameUtil.currentScreen() != null) return false;
+        summaryOpenUntil = 0;
+        Compat.setScreen(new SummaryScreen(lastSummary));
+        return true;
+    }
+
+    private boolean maybeOpenPassive() {
+        if (lastPassive == null || passiveOpenUntil == 0) return false;
+        long now = System.currentTimeMillis();
+        if (now > passiveOpenUntil) {
+            passiveOpenUntil = 0;
+            return false;
+        }
+        if (now - passiveAt < SUMMARY_SETTLE_MS || GameUtil.currentScreen() != null) return false;
         passiveOpenUntil = 0;
         Compat.setScreen(new PassiveScreen(lastPassive));
+        return true;
+    }
+
+    public void summaryShown() {
+        summaryOpenUntil = 0;
+    }
+
+    public void passiveShown() {
+        passiveOpenUntil = 0;
+    }
+
+    public boolean summaryPushedOff() {
+        if (lastSummary == null || summaryReopens >= SUMMARY_REOPENS) return false;
+        summaryReopens++;
+        summaryOpenUntil = System.currentTimeMillis() + SUMMARY_WAIT_MS;
+        return true;
+    }
+
+    public boolean passivePushedOff() {
+        if (lastPassive == null || passiveReopens >= SUMMARY_REOPENS) return false;
+        passiveReopens++;
+        passiveOpenUntil = System.currentTimeMillis() + SUMMARY_WAIT_MS;
+        return true;
     }
 
     private void maybeReport() {
@@ -961,7 +1000,9 @@ public class AssistClient implements ClientModInitializer {
             }
             case "summary" -> {
                 lastSummary = Summary.from(msg);
-                summaryOpenUntil = System.currentTimeMillis() + SUMMARY_WAIT_MS;
+                summaryAt = System.currentTimeMillis();
+                summaryReopens = 0;
+                summaryOpenUntil = summaryAt + SUMMARY_WAIT_MS;
             }
             case "flex_result" -> Flex.result(
                     msg.has("id") ? msg.get("id").getAsString() : null,
@@ -969,7 +1010,9 @@ public class AssistClient implements ClientModInitializer {
                     msg.has("text") ? msg.get("text").getAsString() : null);
             case "passive_summary" -> {
                 lastPassive = PassiveSummary.from(msg);
-                passiveOpenUntil = System.currentTimeMillis() + SUMMARY_WAIT_MS;
+                passiveAt = System.currentTimeMillis();
+                passiveReopens = 0;
+                passiveOpenUntil = passiveAt + SUMMARY_WAIT_MS;
             }
             case "message" -> {
                 if (msg.has("text")) chat(msg.get("text").getAsString());
@@ -1133,11 +1176,19 @@ public class AssistClient implements ClientModInitializer {
     }
 
     public void showSummary() {
-        if (lastSummary == null) {
-            chat("Nothing to show yet. The summary appears when you stop assist after a run.");
+        if (lastSummary == null && lastPassive == null) {
+            chat("Nothing to show yet. The summary appears when you stop assist after a run, or finish a passive setup or check in.");
             return;
         }
-        summaryOpenUntil = System.currentTimeMillis() + SUMMARY_WAIT_MS;
+        long now = System.currentTimeMillis();
+        if (lastSummary != null) {
+            summaryReopens = 0;
+            summaryOpenUntil = now + SUMMARY_WAIT_MS;
+        }
+        if (lastPassive != null) {
+            passiveReopens = 0;
+            passiveOpenUntil = now + SUMMARY_WAIT_MS;
+        }
     }
 
     public void openReplay(String url, String id) {
@@ -1302,7 +1353,7 @@ public class AssistClient implements ClientModInitializer {
         chat("§e/flipperx settings §7slot highlight and Tab fill");
         chat("§e/flipperx goal 1b Hyperion §7save toward something   §e/flipperx goal clear §7drop it");
         chat("§e/flipperx finish 45min §7or §e25m §7sell everything off by then   §e/flipperx finish §7now");
-        chat("§e/flipperx summary §7the last session again");
+        chat("§e/flipperx summary §7the last session and passive summary again");
         chat("§e/flipperx update §7download the latest version");
         chat("§e/flipperx stop §7or §e[ §7pause   §e/flipperx logout §7unlink");
         chat("§e/flipperx break §7stop for now, get told when to come back");

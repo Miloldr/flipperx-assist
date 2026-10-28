@@ -25,6 +25,16 @@ public class UpdateCheck {
         }
         return out.toByteArray();
     }
+    static byte[] entries(String[][] files) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(out)) {
+            for (String[] f : files) {
+                zip.putNextEntry(new ZipEntry(f[0]));
+                zip.write(f[1] == null ? new byte[]{1, 2, 3} : f[1].getBytes(StandardCharsets.UTF_8));
+            }
+        }
+        return out.toByteArray();
+    }
     static String sha(byte[] data) {
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(data));
@@ -171,6 +181,14 @@ public class UpdateCheck {
                 files.sorted(Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
             }
         }
+        byte[] first = entries(new String[][]{{"META-INF/MANIFEST.MF", "one"}, {"a.class", null}, {"fabric.mod.json", "{}"}});
+        byte[] second = entries(new String[][]{{"fabric.mod.json", "{}"}, {"META-INF/MANIFEST.MF", "two"}, {"a.class", null}});
+        byte[] edited = entries(new String[][]{{"a.class", "x"}, {"fabric.mod.json", "{}"}});
+        check(Updater.contentSha256(first).equals("e5c85ca96a7ac19f8d8a930f374d2908147c1fb6314e8055da9666765cef0e49"),
+                "The content hash does not match the backend's");
+        check(Updater.contentSha256(first).equals(Updater.contentSha256(second)), "Entry order or manifest changed the content hash");
+        check(!sha(first).equals(sha(second)), "The two test jars came out the same");
+        check(!Updater.contentSha256(first).equals(Updater.contentSha256(edited)), "An edited class kept the content hash");
         System.out.println("UpdateCheck passed");
     }
 }

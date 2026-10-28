@@ -26,6 +26,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.regex.Pattern;
@@ -44,6 +45,8 @@ public final class Updater {
             .connectTimeout(Duration.ofSeconds(10)).build();
 
     private static volatile Path installed;
+    private static volatile String installedSha256;
+    private static volatile String installedContent;
     private static volatile Path pending;
     private static volatile String pendingVersion;
 
@@ -59,6 +62,14 @@ public final class Updater {
         try {
             installed = findInstalledJar();
             if (installed == null) return;
+            try {
+                byte[] jar = Files.readAllBytes(installed);
+                installedSha256 = sha256(jar);
+                installedContent = contentSha256(jar);
+            } catch (IOException | RuntimeException e) {
+                installedSha256 = null;
+                installedContent = null;
+            }
             pruneOlder(installed, VersionCheck.current());
             Path found = newestPending(installed.getParent(), VersionCheck.current());
             if (found != null) {
@@ -67,9 +78,32 @@ public final class Updater {
             }
         } catch (RuntimeException e) {
             installed = null;
+            installedSha256 = null;
+            installedContent = null;
             pending = null;
             pendingVersion = null;
         }
+    }
+
+    public static String installedSha256() {
+        return installedSha256;
+    }
+
+    public static String installedContent() {
+        return installedContent;
+    }
+
+    public static String contentSha256(byte[] jar) throws IOException {
+        TreeMap<String, String> entries = new TreeMap<>();
+        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(jar))) {
+            for (ZipEntry e; (e = zip.getNextEntry()) != null; ) {
+                if (e.isDirectory() || e.getName().equals("META-INF/MANIFEST.MF")) continue;
+                entries.put(e.getName(), sha256(zip.readAllBytes()));
+            }
+        }
+        StringBuilder all = new StringBuilder();
+        entries.forEach((name, sha) -> all.append(name).append('\n').append(sha).append('\n'));
+        return sha256(all.toString().getBytes(StandardCharsets.UTF_8));
     }
 
     public static boolean available() {

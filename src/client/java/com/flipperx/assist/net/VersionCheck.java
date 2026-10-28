@@ -1,5 +1,6 @@
 package com.flipperx.assist.net;
 
+import com.flipperx.assist.update.Updater;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
@@ -40,7 +41,10 @@ public final class VersionCheck {
     }
 
     public static CompletableFuture<Release> latest() {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(ENDPOINT))
+        String sha256 = Updater.installedSha256();
+        String content = Updater.installedContent();
+        String query = sha256 == null ? "" : "?sha256=" + sha256 + (content == null ? "" : "&content=" + content);
+        HttpRequest request = HttpRequest.newBuilder(URI.create(ENDPOINT + query))
                 .timeout(Duration.ofSeconds(15))
                 .header("User-Agent", "bzassist/" + current())
                 .GET().build();

@@ -4,6 +4,7 @@ import com.flipperx.assist.commands.AssistCommand;
 import com.flipperx.assist.config.ModConfig;
 import com.flipperx.assist.game.Compat;
 import com.flipperx.assist.game.GameUtil;
+import com.flipperx.assist.game.Hooks;
 import com.flipperx.assist.game.Location;
 import com.flipperx.assist.game.ScreenReader;
 import com.flipperx.assist.hud.AssistHud;
@@ -20,6 +21,7 @@ import com.flipperx.assist.screen.PassiveScreen;
 import com.flipperx.assist.screen.PassiveSummary;
 import com.flipperx.assist.screen.SummaryScreen;
 import com.flipperx.assist.update.Updater;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 
@@ -55,9 +57,11 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import net.minecraft.client.gui.screens.ChatScreen;
 
@@ -79,6 +83,8 @@ public class AssistClient implements ClientModInitializer {
     private KeyMapping stopKey;
     private KeyMapping commandKey;
     private ConfirmScreen pendingConfirm;
+    private final Map<String, JsonObject> helpers = new HashMap<>();
+    private final Set<String> helpersStopped = new HashSet<>();
     private boolean settingsPending;
     private int filledSign;
     private String sentCommand;
@@ -451,7 +457,7 @@ public class AssistClient implements ClientModInitializer {
     }
 
     private void sendStepCommand(Minecraft client) {
-        if (!config.autocommand || client.player == null || GameUtil.currentScreen() != null) return;
+        if (!autocommandOn() || client.player == null || GameUtil.currentScreen() != null) return;
         AssistState.Step step = STATE.step();
         if (!STATE.running() || !STATE.current() || !step.isCommand() || step.text().isEmpty()) return;
         long now = System.currentTimeMillis();
@@ -462,19 +468,19 @@ public class AssistClient implements ClientModInitializer {
     }
 
     public String autocommandKey() {
-        if (!config.autocommand || commandKey.isUnbound()) return null;
+        if (!autocommandOn() || commandKey.isUnbound()) return null;
         return commandKey.getTranslatedKeyMessage().getString();
     }
 
     public String tabCommand(String typed) {
-        if (!config.tabFill || !Location.skyBlock() || !STATE.running() || !STATE.current()) return null;
+        if (!tabFillOn() || !Location.skyBlock() || !STATE.running() || !STATE.current()) return null;
         AssistState.Step step = STATE.step();
         if (!step.isCommand() || !GhostText.owns(typed, step.text())) return null;
         return "/" + step.text();
     }
 
     public boolean tabChip() {
-        return config.tabFill && config.tabFills < TAB_CHIP_USES;
+        return tabFillOn() && config.tabFills < TAB_CHIP_USES;
     }
 
     public void tabFilled() {
@@ -484,6 +490,10 @@ public class AssistClient implements ClientModInitializer {
     }
 
     public void autocommand(Boolean on) {
+        if (!Boolean.FALSE.equals(on) && !allowed("autocommand")) {
+            refuseHelper("autocommand");
+            return;
+        }
         if (on == null) {
             chat(config.autocommand ? "Autocommand is on." : "Autocommand is off.");
             return;
@@ -506,6 +516,10 @@ public class AssistClient implements ClientModInitializer {
     }
 
     public void autosign(Boolean on) {
+        if (!Boolean.FALSE.equals(on) && !allowed("autosign")) {
+            refuseHelper("autosign");
+            return;
+        }
         if (on == null) {
             chat(config.autosign ? "Autosign is on." : "Autosign is off.");
             return;
@@ -526,6 +540,54 @@ public class AssistClient implements ClientModInitializer {
                 "Autosign is on. Amounts and searches on signs get typed in for you. "
                         + "You still close the sign yourself.",
                 () -> config.autosign = true);
+    }
+
+    public boolean allowed(String helper) {
+        JsonObject h = helpers.get(helper);
+        return h == null || !h.has("allowed") || h.get("allowed").getAsBoolean();
+    }
+
+    public String helperText(String helper, String key) {
+        JsonObject h = helpers.get(helper);
+        return h != null && h.has(key) && h.get(key).isJsonPrimitive() ? h.get(key).getAsString() : null;
+    }
+
+    public void refuseHelper(String helper) {
+        String line = helperText(helper, "refused");
+        if (line != null) chat(line);
+    }
+
+    private boolean autocommandOn() {
+        return config.autocommand && allowed("autocommand");
+    }
+
+    private boolean autosignOn() {
+        return config.autosign && allowed("autosign");
+    }
+
+    public boolean tabFillOn() {
+        return config.tabFill && allowed("tab_fill");
+    }
+
+    private void helpers(JsonObject msg) {
+        if (!msg.has("helpers") || !msg.get("helpers").isJsonObject()) return;
+        for (Map.Entry<String, JsonElement> e : msg.getAsJsonObject("helpers").entrySet()) {
+            if (!e.getValue().isJsonObject()) continue;
+            String helper = e.getKey();
+            helpers.put(helper, e.getValue().getAsJsonObject());
+            boolean chosen = switch (helper) {
+                case "autosign" -> config.autosign;
+                case "autocommand" -> config.autocommand;
+                case "tab_fill" -> config.tabFill;
+                default -> false;
+            };
+            if (allowed(helper)) {
+                helpersStopped.remove(helper);
+            } else if (chosen && helpersStopped.add(helper)) {
+                String line = helperText(helper, "stopped");
+                if (line != null) chat(line);
+            }
+        }
     }
 
     private ConfirmScreen confirmTurnOn(String name, String what, String onLine, Runnable enable) {
@@ -565,7 +627,7 @@ public class AssistClient implements ClientModInitializer {
     }
 
     private void fillSign() {
-        if (!config.autosign || !STATE.running() || !STATE.current()) return;
+        if (!autosignOn() || !STATE.running() || !STATE.current()) return;
         if (!(GameUtil.currentScreen() instanceof AbstractSignEditScreen screen)) return;
         AssistState.Step step = STATE.step();
         String text = step.text();
@@ -1022,6 +1084,7 @@ public class AssistClient implements ClientModInitializer {
                 if (line != null) raw(line);
             }
             case "toast" -> toast(msg);
+            case "helpers" -> helpers(msg);
             case "settings" -> STATE.serverSettings(msg.has("rows") && msg.get("rows").isJsonArray()
                     ? msg.getAsJsonArray("rows") : null);
             default -> { }
@@ -1040,6 +1103,7 @@ public class AssistClient implements ClientModInitializer {
         o.addProperty("utc_offset_min", utcOffsetMinutes());
         o.addProperty("npc_route", config.npcRoute);
         o.addProperty("notify", config.comebackReminders);
+        o.add("hooks", Hooks.get());
         socket.send(o);
         STATE.status("Authenticating...");
         authAt = System.currentTimeMillis();
@@ -1068,6 +1132,7 @@ public class AssistClient implements ClientModInitializer {
         o.addProperty("mc_username", Minecraft.getInstance().getUser().getName());
         o.addProperty("version", VersionCheck.current());
         o.addProperty("install", config.install());
+        o.add("hooks", Hooks.get());
         linkSent = socket.send(o);
         STATE.status("Finish linking using the link in chat.");
     }
@@ -1169,7 +1234,7 @@ public class AssistClient implements ClientModInitializer {
 
     private boolean commandKeyInMenu() {
         AssistState.Step step = STATE.step();
-        if (!config.autocommand || !STATE.running()
+        if (!autocommandOn() || !STATE.running()
                 || !(step.isCommand() || "close".equals(step.kind()))) return false;
         STATE.notice("Close the menu first.", 3000);
         return true;

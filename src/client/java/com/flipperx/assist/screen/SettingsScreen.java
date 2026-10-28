@@ -268,10 +268,17 @@ public final class SettingsScreen extends Screen {
         y += 1 + 5;
 
         label(g, f, "Tab fills the command", left, y);
-        value(g, f, cfg.tabFill ? "On" : "Off", right, y, mouseX, mouseY, step -> {
-            cfg.tabFill = !cfg.tabFill;
-            cfg.save();
-        });
+        AssistClient assist = AssistClient.get();
+        if (assist != null && !assist.allowed("tab_fill")) {
+            String unavailable = assist.helperText("tab_fill", "label");
+            value(g, f, unavailable == null ? "Off" : unavailable, right, y, mouseX, mouseY,
+                    step -> assist.refuseHelper("tab_fill"));
+        } else {
+            value(g, f, cfg.tabFill ? "On" : "Off", right, y, mouseX, mouseY, step -> {
+                cfg.tabFill = !cfg.tabFill;
+                cfg.save();
+            });
+        }
         y += ROW;
 
         label(g, f, "Interact with bazaar via", left, y);

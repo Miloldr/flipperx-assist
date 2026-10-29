@@ -41,6 +41,7 @@ public final class VersionCheck {
     }
 
     public static CompletableFuture<Release> latest() {
+        Updater.hashAgain();
         String sha256 = Updater.installedSha256();
         String content = Updater.installedContent();
         String query = sha256 == null ? "" : "?sha256=" + sha256 + (content == null ? "" : "&content=" + content);
@@ -56,12 +57,20 @@ public final class VersionCheck {
         });
     }
 
-    public static void fetch(Executor executor, Consumer<Release> onNewer) {
-        latest().thenAccept(release -> {
-            if (release != null && compare(release.version(), current()) > 0) {
-                executor.execute(() -> onNewer.accept(release));
+    public static void fetch(Executor executor, Consumer<Release> onNewer, Consumer<Boolean> done) {
+        CompletableFuture<Release> asked;
+        try {
+            asked = latest();
+        } catch (RuntimeException e) {
+            executor.execute(() -> done.accept(false));
+            return;
+        }
+        asked.whenComplete((release, error) -> executor.execute(() -> {
+            done.accept(error == null);
+            if (error == null && release != null && compare(release.version(), current()) > 0) {
+                onNewer.accept(release);
             }
-        }).exceptionally(t -> null);
+        }));
     }
 
     public static Release parse(String body) {

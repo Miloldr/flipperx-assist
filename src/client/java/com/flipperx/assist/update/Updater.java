@@ -62,14 +62,7 @@ public final class Updater {
         try {
             installed = findInstalledJar();
             if (installed == null) return;
-            try {
-                byte[] jar = Files.readAllBytes(installed);
-                installedSha256 = sha256(jar);
-                installedContent = contentSha256(jar);
-            } catch (IOException | RuntimeException e) {
-                installedSha256 = null;
-                installedContent = null;
-            }
+            hash(installed);
             pruneOlder(installed, VersionCheck.current());
             Path found = newestPending(installed.getParent(), VersionCheck.current());
             if (found != null) {
@@ -82,6 +75,32 @@ public final class Updater {
             installedContent = null;
             pending = null;
             pendingVersion = null;
+        }
+    }
+
+    private static void hash(Path jarPath) {
+        try {
+            byte[] jar = Files.readAllBytes(jarPath);
+            String content = contentSha256(jar);
+            installedSha256 = sha256(jar);
+            installedContent = content;
+        } catch (IOException | RuntimeException e) {
+            installedSha256 = null;
+            installedContent = null;
+        }
+    }
+
+    public static void hashAgain() {
+        if (installedSha256 != null && installedContent != null) return;
+        try {
+            Path jar = installed;
+            if (jar == null) {
+                jar = findInstalledJar();
+                if (jar == null) return;
+                installed = jar;
+            }
+            hash(jar);
+        } catch (RuntimeException ignored) {
         }
     }
 

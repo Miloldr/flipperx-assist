@@ -2,6 +2,7 @@ package com.flipperx.assist;
 
 import com.flipperx.assist.commands.AssistCommand;
 import com.flipperx.assist.config.ModConfig;
+import com.flipperx.assist.game.ChatHide;
 import com.flipperx.assist.game.Compat;
 import com.flipperx.assist.game.GameUtil;
 import com.flipperx.assist.game.Hooks;
@@ -32,6 +33,7 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
+import net.fabricmc.fabric.api.event.Event;
 
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.gui.components.ChatComponent;
@@ -151,7 +153,14 @@ public class AssistClient implements ClientModInitializer {
     private long nextReminderAt;
     private static final long VERSION_CHECK_DELAY_MS = 10_000;
     private static final long VERSION_CHECK_EVERY_MS = 6 * 60 * 60_000;
+    private static final long VERSION_RETRY_MIN_MS = 60_000;
+    private static final long VERSION_RETRY_MAX_MS = 30 * 60_000;
+    private static final long VERSION_RECONNECT_MS = 10 * 60_000;
     private long versionCheckAt;
+    private long versionCheckedAt;
+    private long versionRetryMs = VERSION_RETRY_MIN_MS;
+    private long versionGeneration = -1;
+    private boolean versionChecking;
     private String announcedVersion;
     private boolean notedVersion;
     private final AtomicBoolean updating = new AtomicBoolean();
@@ -225,12 +234,18 @@ public class AssistClient implements ClientModInitializer {
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, access) ->
                 AssistCommand.register(dispatcher));
 
-        ClientReceiveMessageEvents.GAME.register((message, overlay) -> {
-            if (overlay || !STATE.linked()) return;
-            JsonObject o = new JsonObject();
-            o.addProperty("type", "chat");
-            o.addProperty("line", message.getString());
-            socket.send(o);
+        Identifier chatPhase = Identifier.fromNamespaceAndPath("bzassist", "chat");
+        ClientReceiveMessageEvents.ALLOW_GAME.addPhaseOrdering(chatPhase, Event.DEFAULT_PHASE);
+        ClientReceiveMessageEvents.ALLOW_GAME.register(chatPhase, (message, overlay) -> {
+            if (overlay) return true;
+            String line = message.getString();
+            if (STATE.linked()) {
+                JsonObject o = new JsonObject();
+                o.addProperty("type", "chat");
+                o.addProperty("line", line);
+                socket.send(o);
+            }
+            return !(CoflPause.active() && ChatHide.hide(line));
         });
 
         ClientTickEvents.END_CLIENT_TICK.register(this::onTick);
@@ -322,10 +337,30 @@ public class AssistClient implements ClientModInitializer {
         long now = System.currentTimeMillis();
         if (versionCheckAt == 0) {
             versionCheckAt = now + VERSION_CHECK_DELAY_MS;
-        } else if (now >= versionCheckAt) {
+            return;
+        }
+        if (socket.connected() && socket.generation() != versionGeneration) {
+            versionGeneration = socket.generation();
+            if (versionCheckedAt > 0 && now - versionCheckedAt > VERSION_RECONNECT_MS) {
+                versionCheckAt = Math.min(versionCheckAt, now);
+            }
+        }
+        if (versionChecking || now < versionCheckAt) return;
+        versionChecking = true;
+        noteVersion();
+        VersionCheck.fetch(client::execute, this::announceUpdate, this::versionChecked);
+    }
+
+    private void versionChecked(boolean ok) {
+        versionChecking = false;
+        long now = System.currentTimeMillis();
+        if (ok) {
+            versionCheckedAt = now;
             versionCheckAt = now + VERSION_CHECK_EVERY_MS;
-            noteVersion();
-            VersionCheck.fetch(client::execute, this::announceUpdate);
+            versionRetryMs = VERSION_RETRY_MIN_MS;
+        } else {
+            versionCheckAt = now + versionRetryMs;
+            versionRetryMs = Math.min(versionRetryMs * 2, VERSION_RETRY_MAX_MS);
         }
     }
 

@@ -95,6 +95,16 @@ public final class Compat {
     public static final int KEY_RBRACKET = key("KEY_RBRACKET");
     public static final int KEY_B = key("KEY_B");
 
+    private static final int[] MODIFIER_KEYS = java.util.stream.Stream.of(
+                    "KEY_LSHIFT", "KEY_RSHIFT", "KEY_LCONTROL", "KEY_RCONTROL", "KEY_LALT", "KEY_RALT",
+                    "KEY_LSUPER", "KEY_RSUPER", "KEY_LGUI", "KEY_RGUI")
+            .mapToInt(Compat::key).filter(k -> k >= 0).toArray();
+
+    public static boolean isModifierKey(int key) {
+        for (int k : MODIFIER_KEYS) if (k == key) return true;
+        return false;
+    }
+
     public static InputConstants.Type keyboard() {
         return KEYBOARD;
     }

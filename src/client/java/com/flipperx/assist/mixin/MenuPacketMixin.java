@@ -17,8 +17,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(ClientPacketListener.class)
 public abstract class MenuPacketMixin {
-    private static final String OPEN_TEXT_EDIT = "Lnet/minecraft/client/player/LocalPlayer;"
-            + "openTextEdit(Lnet/minecraft/world/level/block/entity/SignBlockEntity;Z)V";
+    private static final String OPEN_TEXT_EDIT = "Lnet/minecraft/client/player/LocalPlayer;openTextEdit";
 
     @Inject(method = "handleOpenScreen", at = @At("RETURN"))
     private void bzassist$opened(ClientboundOpenScreenPacket packet, CallbackInfo ci) {

@@ -13,7 +13,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(AbstractContainerScreen.class)
 public abstract class SlotClickMixin {
-    @Inject(method = "slotClicked", at = @At("HEAD"))
+    @Inject(method = "slotClicked(Lnet/minecraft/world/inventory/Slot;IILnet/minecraft/world/inventory/ContainerInput;)V",
+            at = @At("HEAD"))
     private void bzassist$clicked(Slot slot, int index, int button, ContainerInput input, CallbackInfo ci) {
         if (slot != null) AssistClient.slotClicked(slot);
     }

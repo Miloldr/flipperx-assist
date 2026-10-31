@@ -18,7 +18,6 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.util.FormattedCharSequence;
-import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
 
@@ -571,9 +570,8 @@ public final class SummaryScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
-        int mods = GLFW.GLFW_MOD_CONTROL | GLFW.GLFW_MOD_ALT | GLFW.GLFW_MOD_SUPER;
-        boolean modifier = event.key() >= GLFW.GLFW_KEY_LEFT_SHIFT && event.key() <= GLFW.GLFW_KEY_RIGHT_SUPER;
-        if (modifier || (event.modifiers() & mods) != 0) return super.keyPressed(event);
+        boolean held = event.hasControlDown() || event.hasControlDownWithQuirk() || event.hasAltDown();
+        if (Compat.isModifierKey(event.key()) || held) return super.keyPressed(event);
         AssistClient client = AssistClient.get();
         if (client != null && client.handleKey(event)) {
             onClose();

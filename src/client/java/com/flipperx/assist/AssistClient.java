@@ -87,6 +87,7 @@ public class AssistClient implements ClientModInitializer {
     private ConfirmScreen pendingConfirm;
     private final Map<String, JsonObject> helpers = new HashMap<>();
     private final Set<String> helpersStopped = new HashSet<>();
+    private String helpersNote;
     private boolean settingsPending;
     private int filledSign;
     private String sentCommand;
@@ -536,6 +537,7 @@ public class AssistClient implements ClientModInitializer {
         if (!on) {
             config.autocommand = false;
             config.save();
+            helperChanged("autocommand", false);
             chat("Autocommand is off.");
             return;
         }
@@ -547,34 +549,87 @@ public class AssistClient implements ClientModInitializer {
         pendingConfirm = confirmTurnOn("Autocommand",
                 "Pressing " + key + " will send the command on the panel for you.",
                 "Autocommand is on. When the panel shows a command, press " + key + " to send it.",
-                () -> config.autocommand = true);
+                () -> config.autocommand = true, "autocommand", null);
     }
 
     public void autosign(Boolean on) {
+        autosign(on, null);
+    }
+
+    public void autosign(Boolean on, Screen back) {
         if (!Boolean.FALSE.equals(on) && !allowed("autosign")) {
-            refuseHelper("autosign");
+            if (back == null) refuseHelper("autosign");
+            else premium("autosign");
             return;
         }
         if (on == null) {
-            chat(config.autosign ? "Autosign is on." : "Autosign is off.");
+            chat(config.autosign ? "Prefill signs is on." : "Prefill signs is off.");
             return;
         }
         if (!on) {
             config.autosign = false;
             config.save();
-            chat("Autosign is off.");
+            helperChanged("autosign", false);
+            if (back == null) chat("Prefill signs is off.");
             return;
         }
         if (config.autosign) {
-            chat("Autosign is already on.");
+            if (back == null) chat("Prefill signs is already on.");
             return;
         }
-        pendingConfirm = confirmTurnOn("Autosign",
+        ConfirmScreen confirm = confirmTurnOn("Prefill signs",
                 "When a sign asks for an amount or a search, what the panel says will be typed in for you. "
                         + "You still close the sign yourself.",
-                "Autosign is on. Amounts and searches on signs get typed in for you. "
+                "Prefill signs is on. Amounts and searches on signs get typed in for you. "
                         + "You still close the sign yourself.",
-                () -> config.autosign = true);
+                () -> config.autosign = true, "autosign", back);
+        if (back != null) Compat.setScreen(confirm);
+        else pendingConfirm = confirm;
+    }
+
+    public void tabFill(boolean on) {
+        if (on && !allowed("tab_fill")) {
+            premium("tab_fill");
+            return;
+        }
+        config.tabFill = on;
+        config.save();
+        helperChanged("tab_fill", on);
+    }
+
+    public void helperChanged(String helper, boolean on) {
+        if (!STATE.linked() || !socket.connected()) return;
+        JsonObject o = new JsonObject();
+        o.addProperty("type", "helper");
+        o.addProperty("helper", helper);
+        o.addProperty("on", on);
+        socket.send(o);
+    }
+
+    public void premium(String feature) {
+        if (!STATE.linked() || !socket.connected()) {
+            if (feature != null) refuseHelper(feature);
+            else chat("§e" + STATE.status());
+            return;
+        }
+        JsonObject o = new JsonObject();
+        o.addProperty("type", "premium");
+        if (feature != null) o.addProperty("feature", feature);
+        socket.send(o);
+    }
+
+    public void help() {
+        if (!STATE.linked() || !socket.connected()) {
+            printHelp();
+            return;
+        }
+        JsonObject o = new JsonObject();
+        o.addProperty("type", "help");
+        socket.send(o);
+    }
+
+    public String helpersNote() {
+        return helpersNote;
     }
 
     public boolean allowed(String helper) {
@@ -606,6 +661,7 @@ public class AssistClient implements ClientModInitializer {
 
     private void helpers(JsonObject msg) {
         if (!msg.has("helpers") || !msg.get("helpers").isJsonObject()) return;
+        helpersNote = msg.has("note") && msg.get("note").isJsonPrimitive() ? msg.get("note").getAsString() : null;
         for (Map.Entry<String, JsonElement> e : msg.getAsJsonObject("helpers").entrySet()) {
             if (!e.getValue().isJsonObject()) continue;
             String helper = e.getKey();
@@ -625,14 +681,16 @@ public class AssistClient implements ClientModInitializer {
         }
     }
 
-    private ConfirmScreen confirmTurnOn(String name, String what, String onLine, Runnable enable) {
+    private ConfirmScreen confirmTurnOn(String name, String what, String onLine, Runnable enable,
+                                        String helper, Screen back) {
         return new ConfirmScreen(yes -> {
-            Compat.setScreen(null);
+            Compat.setScreen(back);
             if (yes) {
                 enable.run();
                 config.save();
+                helperChanged(helper, true);
                 chat(onLine);
-            } else {
+            } else if (back == null) {
                 chat(name + " stays off.");
             }
         }, Component.literal("Turn on " + name.toLowerCase(Locale.ROOT) + "?"),
@@ -1138,6 +1196,15 @@ public class AssistClient implements ClientModInitializer {
         o.addProperty("utc_offset_min", utcOffsetMinutes());
         o.addProperty("npc_route", config.npcRoute);
         o.addProperty("notify", config.comebackReminders);
+        JsonObject on = new JsonObject();
+        on.addProperty("autosign", config.autosign);
+        on.addProperty("tab_fill", config.tabFill);
+        on.addProperty("autocommand", config.autocommand);
+        o.add("helpers_on", on);
+        JsonObject keys = new JsonObject();
+        if (startKey != null && !startKey.isUnbound()) keys.addProperty("start", startKey.getTranslatedKeyMessage().getString());
+        if (stopKey != null && !stopKey.isUnbound()) keys.addProperty("stop", stopKey.getTranslatedKeyMessage().getString());
+        o.add("keys", keys);
         o.add("hooks", Hooks.get());
         socket.send(o);
         STATE.status("Authenticating...");
@@ -1448,20 +1515,25 @@ public class AssistClient implements ClientModInitializer {
     }
 
     public void printHelp() {
-        chat("§e/flipperx login §7link this account   §e/flipperx start §7or §e] §7begin");
+        chat("§e/flipperx help §7how Assist works");
+        chat("§e/flipperx login §7link this account   §e/flipperx start §7or §e" + keyName(startKey) + " §7begin");
         chat("§e/flipperx hud reset §7restore the panel position");
-        chat("§e/flipperx settings §7slot highlight and Tab fill");
+        chat("§e/flipperx settings §7slot highlight, Tab fill and prefill signs");
         chat("§e/flipperx goal 1b Hyperion §7save toward something   §e/flipperx goal clear §7drop it");
         chat("§e/flipperx finish 45min §7or §e25m §7sell everything off by then   §e/flipperx finish §7now");
         chat("§e/flipperx summary §7the last session and passive summary again");
         chat("§e/flipperx update §7download the latest version");
-        chat("§e/flipperx stop §7or §e[ §7pause   §e/flipperx logout §7unlink");
+        chat("§e/flipperx stop §7or §e" + keyName(stopKey) + " §7pause   §e/flipperx logout §7unlink");
         chat("§e/flipperx break §7stop for now, get told when to come back");
         chat("§e/flipperx warmup §7set bigger buy orders up now, flip once they've filled");
         chat("§e/flipperx passive §7set up passive flips, or check up on them");
         chat("§e/flipperx notify off §7no more reminders to come back");
         chat("§e/flipperx reminders off §7no login reminders while logged out");
         chat("§e/flipperx feedback §7tell us what you think   §e/flipperx discord §7questions and bug reports");
+    }
+
+    private static String keyName(KeyMapping key) {
+        return key == null ? "?" : key.getTranslatedKeyMessage().getString();
     }
 
     public void discord() {

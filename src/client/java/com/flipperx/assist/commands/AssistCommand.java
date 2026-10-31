@@ -132,6 +132,14 @@ public final class AssistCommand {
                     AssistClient.get().discord();
                     return 1;
                 }))
+                .then(ClientCommands.literal("help").executes(ctx -> {
+                    AssistClient.get().help();
+                    return 1;
+                }))
+                .then(ClientCommands.literal("premium").executes(ctx -> {
+                    AssistClient.get().premium(null);
+                    return 1;
+                }))
                 .then(ClientCommands.literal("config").then(ClientCommands.literal("autocommand")
                         .executes(ctx -> {
                             AssistClient.get().autocommand(null);

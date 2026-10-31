@@ -69,6 +69,7 @@ public final class SettingsScreen extends Screen {
     private final Map<String, EditBox> inputs = new HashMap<>();
     private final Map<String, String> sent = new HashMap<>();
     private int serverVersion = -1;
+    private boolean noteShown;
     private int cardX0, cardY0, cardX1, cardY1;
     private float a;
 
@@ -91,12 +92,21 @@ public final class SettingsScreen extends Screen {
 
     private static int cardHeight() {
         int rows = serverRows().size();
-        return PAD + LINE + 5 + PREVIEW_H + 8 + ROW * 4 + 4 + 1 + 5 + ROW * 3 + 4 + 1
+        return PAD + LINE + 5 + PREVIEW_H + 8 + ROW * 4 + 4 + 1 + 5 + ROW * 4 + noteHeight() + 4 + 1
                 + (rows > 0 ? 5 + ROW * rows + 4 + 1 : 0) + 8 + BUTTON_H + PAD;
     }
 
     private static int serverTop(int cardY0) {
-        return cardY0 + PAD + LINE + 5 + PREVIEW_H + 8 + ROW * 4 + 4 + 1 + 5 + ROW * 3 + 4 + 1 + 5;
+        return cardY0 + PAD + LINE + 5 + PREVIEW_H + 8 + ROW * 4 + 4 + 1 + 5 + ROW * 4 + noteHeight() + 4 + 1 + 5;
+    }
+
+    private static String helpersNote() {
+        AssistClient client = AssistClient.get();
+        return client == null ? null : client.helpersNote();
+    }
+
+    private static int noteHeight() {
+        return helpersNote() == null ? 0 : LINE + 2;
     }
 
     private static List<JsonObject> serverRows() {
@@ -113,6 +123,7 @@ public final class SettingsScreen extends Screen {
 
     @Override
     protected void init() {
+        noteShown = helpersNote() != null;
         int w = Math.min(MAX_W, width - 24);
         int h = cardHeight();
         cardX0 = (width - w) / 2;
@@ -166,7 +177,7 @@ public final class SettingsScreen extends Screen {
     @Override
     public void tick() {
         super.tick();
-        if (AssistClient.state().serverSettingsVersion() != serverVersion) {
+        if (AssistClient.state().serverSettingsVersion() != serverVersion || noteShown != (helpersNote() != null)) {
             sendInputs();
             rebuildWidgets();
         }
@@ -267,19 +278,17 @@ public final class SettingsScreen extends Screen {
         g.fill(left, y, right, y + 1, color(AssistHud.BORDER));
         y += 1 + 5;
 
-        label(g, f, "Tab fills the command", left, y);
-        AssistClient assist = AssistClient.get();
-        if (assist != null && !assist.allowed("tab_fill")) {
-            String unavailable = assist.helperText("tab_fill", "label");
-            value(g, f, unavailable == null ? "Off" : unavailable, right, y, mouseX, mouseY,
-                    step -> assist.refuseHelper("tab_fill"));
-        } else {
-            value(g, f, cfg.tabFill ? "On" : "Off", right, y, mouseX, mouseY, step -> {
-                cfg.tabFill = !cfg.tabFill;
-                cfg.save();
-            });
-        }
+        helperRow(g, f, "Tab fills the command", "tab_fill", cfg.tabFill, right, left, y, mouseX, mouseY);
         y += ROW;
+
+        helperRow(g, f, "Prefill signs", "autosign", cfg.autosign, right, left, y, mouseX, mouseY);
+        y += ROW;
+
+        String note = helpersNote();
+        if (note != null && noteShown) {
+            g.text(f, note, left, y + 1, color(AssistHud.AMBER), false);
+            y += LINE + 2;
+        }
 
         label(g, f, "Interact with bazaar via", left, y);
         value(g, f, cfg.npcRoute ? "NPC" : "Commands", right, y, mouseX, mouseY,
@@ -359,6 +368,26 @@ public final class SettingsScreen extends Screen {
             }
             default -> label(g, f, text, left, y);
         }
+    }
+
+    private void helperRow(GuiGraphicsExtractor g, Font f, String text, String helper, boolean on,
+                           int right, int left, int y, int mouseX, int mouseY) {
+        label(g, f, text, left, y);
+        AssistClient assist = AssistClient.get();
+        if (assist != null && !assist.allowed(helper)) {
+            String unavailable = assist.helperText(helper, "label");
+            value(g, f, unavailable == null ? "Off" : unavailable, right, y, mouseX, mouseY,
+                    step -> assist.premium(helper));
+            return;
+        }
+        value(g, f, on ? "On" : "Off", right, y, mouseX, mouseY, step -> setHelper(helper, !on));
+    }
+
+    private void setHelper(String helper, boolean on) {
+        AssistClient assist = AssistClient.get();
+        if (assist == null) return;
+        if ("autosign".equals(helper)) assist.autosign(on, this);
+        else assist.tabFill(on);
     }
 
     private void drawPreview(GuiGraphicsExtractor g, int px, int py, Look look) {
@@ -449,8 +478,13 @@ public final class SettingsScreen extends Screen {
         cfg.highlightFill = Look.DEFAULT.fill();
         cfg.highlightWidth = Look.DEFAULT.width();
         cfg.highlightPulse = Look.DEFAULT.pulse().name();
+        boolean hadTab = cfg.tabFill, hadSign = cfg.autosign;
         cfg.tabFill = false;
+        cfg.autosign = false;
         cfg.save();
+        AssistClient assist = AssistClient.get();
+        if (assist != null && hadTab) assist.helperChanged("tab_fill", false);
+        if (assist != null && hadSign) assist.helperChanged("autosign", false);
         hex.setValue(cfg.highlightColor);
         if (cfg.npcRoute) setNpcRoute(false);
     }

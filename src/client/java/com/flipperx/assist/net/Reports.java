@@ -4,7 +4,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 public final class Reports {
-    private static final int MAX_IN_FLIGHT = 4;
+    public static final int MAX_IN_FLIGHT = 16;
+    private static final int CONTEXTS_KEPT = 2 * MAX_IN_FLIGHT;
     private boolean numbered;
     private boolean waiting;
     private long sent;
@@ -49,7 +50,7 @@ public final class Reports {
         if (!numbered) return;
         sent = seq;
         contexts.put(seq, context);
-        contexts.keySet().removeIf(k -> k < seq - 4);
+        contexts.keySet().removeIf(k -> k < seq - CONTEXTS_KEPT);
     }
 
     public boolean stale(long seq) {

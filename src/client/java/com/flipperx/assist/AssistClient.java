@@ -13,6 +13,7 @@ import com.flipperx.assist.hud.GhostText;
 import com.flipperx.assist.hud.ProfitPops;
 import com.flipperx.assist.mixin.SignEditScreenAccessor;
 import com.flipperx.assist.net.AssistSocket;
+import com.flipperx.assist.net.DiscordPresence;
 import com.flipperx.assist.net.Reports;
 import com.flipperx.assist.net.StatusCheck;
 import com.flipperx.assist.net.VersionCheck;
@@ -125,6 +126,8 @@ public class AssistClient implements ClientModInitializer {
     private JsonObject clickToReport;
     private String lastClickedName = "";
     private Prefetch prefetch;
+    private final DiscordPresence presence = new DiscordPresence();
+    private JsonObject lastPresence;
     private static final long PREFETCH_TTL_MS = 15_000;
     private int clickedSlot = -1;
     private int clickedHash;
@@ -133,7 +136,7 @@ public class AssistClient implements ClientModInitializer {
     private record Target(AssistState.Step step, String on, String title, boolean prefix,
                           List<String> names, boolean inv, String after) {}
 
-    private record Prefetch(Target target, int from, long until) {}
+    private record Prefetch(Target target, int from, long until, List<Target> rest) {}
     private long authAt;
     private boolean justLinked;
     private Connection gameConnection;
@@ -312,6 +315,10 @@ public class AssistClient implements ClientModInitializer {
             clickedSlot = -1;
         }
         boolean skyBlock = Location.skyBlock();
+        if (!skyBlock || !socket.connected()) {
+            lastPresence = null;
+            presence.clear();
+        }
         if (skyBlock) {
             checkVersion(client);
             checkStatus(client);
@@ -619,34 +626,37 @@ public class AssistClient implements ClientModInitializer {
     }
 
     public void autosign(Boolean on, Screen back) {
-        if (!Boolean.FALSE.equals(on) && !allowed("autosign")) {
+        if (on == null) {
+            chat(signLine(config.signMode()));
+            return;
+        }
+        signMode(on ? "prefill" : "off", back);
+    }
+
+    public void signMode(String mode, Screen back) {
+        if (!"off".equals(mode) && !allowed("autosign")) {
             if (back == null) refuseHelper("autosign");
             else premium("autosign");
             return;
         }
-        if (on == null) {
-            chat(config.autosign ? "Prefill signs is on." : "Prefill signs is off.");
+        if (mode.equals(config.signMode())) {
+            if (back == null) chat(signLine(mode));
             return;
         }
-        if (!on) {
-            config.autosign = false;
-            config.save();
-            helperChanged("autosign", false);
-            if (back == null) chat("Prefill signs is off.");
-            return;
-        }
-        if (config.autosign) {
-            if (back == null) chat("Prefill signs is already on.");
-            return;
-        }
-        ConfirmScreen confirm = confirmTurnOn("Prefill signs",
-                "When a sign asks for an amount or a search, what the panel says will be typed in for you. "
-                        + "You still close the sign yourself.",
-                "Prefill signs is on. Amounts and searches on signs get typed in for you. "
-                        + "You still close the sign yourself.",
-                () -> config.autosign = true, "autosign", back);
-        if (back != null) Compat.setScreen(confirm);
-        else pendingConfirm = confirm;
+        config.signMode(mode);
+        config.save();
+        helperChanged("autosign", config.autosign);
+        if (back == null) chat(signLine(mode));
+    }
+
+    private static String signLine(String mode) {
+        return switch (mode) {
+            case "prefill" -> "Prefill signs is on. Amounts and searches on signs get typed in for you. "
+                    + "You still close the sign yourself.";
+            case "clipboard" -> "Prefill signs is on clipboard. When a sign asks for an amount or a search, "
+                    + "it gets copied, so paste it with Ctrl+V (Cmd+V on a Mac) and close the sign.";
+            default -> "Prefill signs is off.";
+        };
     }
 
     public void tabFill(boolean on) {
@@ -665,6 +675,7 @@ public class AssistClient implements ClientModInitializer {
         o.addProperty("type", "helper");
         o.addProperty("helper", helper);
         o.addProperty("on", on);
+        if ("autosign".equals(helper)) o.addProperty("mode", config.signMode());
         socket.send(o);
     }
 
@@ -790,6 +801,10 @@ public class AssistClient implements ClientModInitializer {
         int context = screenContext();
         if (context == filledSign || context != acceptedContext) return;
         filledSign = context;
+        if ("clipboard".equals(config.signMode())) {
+            Minecraft.getInstance().keyboardHandler.setClipboard(text);
+            return;
+        }
         SignEditScreenAccessor sign = (SignEditScreenAccessor) screen;
         String[] lines = sign.bzassist$getMessages();
         if (sign.bzassist$getLine() != 0 || lines == null || lines.length == 0
@@ -947,23 +962,21 @@ public class AssistClient implements ClientModInitializer {
     }
 
     private void notePrefetch(JsonObject msg, int from, boolean replace) {
-        Target t = null;
+        List<Target> targets = new ArrayList<>();
         if (msg.has("ahead") && msg.get("ahead").isJsonArray()) {
             for (var e : msg.getAsJsonArray("ahead")) {
-                if (e.isJsonObject()) {
-                    t = target(e.getAsJsonObject(), null);
-                    break;
-                }
+                if (e.isJsonObject()) targets.add(target(e.getAsJsonObject(), null));
             }
         } else if (msg.has("next") && msg.get("next").isJsonObject()) {
             JsonObject n = msg.getAsJsonObject("next");
-            t = target(n, n.has("sign") && n.get("sign").getAsBoolean() ? "sign" : "menu");
+            targets.add(target(n, n.has("sign") && n.get("sign").getAsBoolean() ? "sign" : "menu"));
         }
-        if (t == null) {
+        if (targets.isEmpty()) {
             if (replace) prefetch = null;
             return;
         }
-        prefetch = new Prefetch(t, from, System.currentTimeMillis() + PREFETCH_TTL_MS);
+        prefetch = new Prefetch(targets.get(0), from, System.currentTimeMillis() + PREFETCH_TTL_MS,
+                List.copyOf(targets.subList(1, targets.size())));
     }
 
     private static Target target(JsonObject n, String on) {
@@ -992,11 +1005,13 @@ public class AssistClient implements ClientModInitializer {
         int context = screenContext();
         Target t = p.target();
         boolean landing = "landed".equals(t.on());
-        if (landing) {
-            if (context != p.from()) {
+        if (landing && context != p.from()) {
+            if (t.title().isEmpty() || screen == null || !titleMatches(t)) {
                 prefetch = null;
                 return;
             }
+            landing = false;
+        } else if (landing) {
             if (!clickLanded()) return;
         } else if (context == p.from()) {
             return;
@@ -1044,7 +1059,9 @@ public class AssistClient implements ClientModInitializer {
             }
             if (slot < 0) return;
         }
-        prefetch = null;
+        prefetch = p.rest().isEmpty() ? null
+                : new Prefetch(p.rest().get(0), context, System.currentTimeMillis() + PREFETCH_TTL_MS,
+                p.rest().subList(1, p.rest().size()));
         if (landing) {
             clickedSlot = -1;
             landedSeq = reports.next() - 1;
@@ -1240,6 +1257,7 @@ public class AssistClient implements ClientModInitializer {
             }
             case "toast" -> toast(msg);
             case "helpers" -> helpers(msg);
+            case "presence" -> onPresence(msg);
             case "settings" -> STATE.serverSettings(msg.has("rows") && msg.get("rows").isJsonArray()
                     ? msg.getAsJsonArray("rows") : null);
             default -> { }
@@ -1263,6 +1281,7 @@ public class AssistClient implements ClientModInitializer {
         on.addProperty("tab_fill", config.tabFill);
         on.addProperty("autocommand", config.autocommand);
         o.add("helpers_on", on);
+        o.addProperty("sign_mode", config.signMode());
         JsonObject keys = new JsonObject();
         if (startKey != null && !startKey.isUnbound()) keys.addProperty("start", startKey.getTranslatedKeyMessage().getString());
         if (stopKey != null && !stopKey.isUnbound()) keys.addProperty("stop", stopKey.getTranslatedKeyMessage().getString());
@@ -1460,6 +1479,29 @@ public class AssistClient implements ClientModInitializer {
         o.addProperty("key", key);
         o.addProperty("value", value == null ? "" : value);
         socket.send(o);
+    }
+
+    private void onPresence(JsonObject msg) {
+        JsonElement p = msg.get("presence");
+        lastPresence = p != null && p.isJsonObject() ? p.getAsJsonObject() : null;
+        if (!config.discordStatus || lastPresence == null) {
+            presence.clear();
+            return;
+        }
+        presence.update(lastPresence);
+        if (!config.discordNoticed && msg.has("notice") && msg.get("notice").isJsonPrimitive()) {
+            config.discordNoticed = true;
+            config.save();
+            chat(msg.get("notice").getAsString());
+        }
+    }
+
+    public void setDiscordStatus(boolean on) {
+        config.discordStatus = on;
+        config.discordNoticed = true;
+        config.save();
+        if (on && lastPresence != null) presence.update(lastPresence);
+        else presence.clear();
     }
 
     public void setNpcRoute(boolean on) {

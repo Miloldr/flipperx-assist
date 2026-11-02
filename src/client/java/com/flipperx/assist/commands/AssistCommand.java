@@ -165,6 +165,10 @@ public final class AssistCommand {
                         .then(ClientCommands.literal("disabled").executes(ctx -> {
                             AssistClient.get().autosign(false);
                             return 1;
+                        }))
+                        .then(ClientCommands.literal("clipboard").executes(ctx -> {
+                            AssistClient.get().signMode("clipboard", null);
+                            return 1;
                         }))))
                 .then(ClientCommands.literal("reminders")
                         .then(ClientCommands.literal("off").executes(ctx -> {

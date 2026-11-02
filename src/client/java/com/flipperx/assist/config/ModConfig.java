@@ -25,10 +25,13 @@ public final class ModConfig {
     public boolean loginReminders = true;
     public boolean autocommand = false;
     public boolean autosign = false;
+    public String signHelper;
     public boolean tabFill = false;
     public int tabFills = 0;
     public boolean npcRoute = false;
     public boolean comebackReminders = true;
+    public boolean discordStatus = true;
+    public boolean discordNoticed = false;
     public boolean tabFillReset = false;
     public String highlightColor = "#3D8BE8";
     public String highlightShape;
@@ -89,6 +92,18 @@ public final class ModConfig {
             Files.writeString(PATH, GSON.toJson(this));
         } catch (Exception ignored) {
         }
+    }
+
+    public static final String[] SIGN_MODES = {"off", "prefill", "clipboard"};
+
+    public String signMode() {
+        if (!autosign) return "off";
+        return "clipboard".equals(signHelper) ? "clipboard" : "prefill";
+    }
+
+    public void signMode(String mode) {
+        autosign = !"off".equals(mode);
+        signHelper = "clipboard".equals(mode) ? "clipboard" : null;
     }
 
     public synchronized String install() {

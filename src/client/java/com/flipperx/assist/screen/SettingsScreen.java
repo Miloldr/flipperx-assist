@@ -24,6 +24,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -92,12 +93,12 @@ public final class SettingsScreen extends Screen {
 
     private static int cardHeight() {
         int rows = serverRows().size();
-        return PAD + LINE + 5 + PREVIEW_H + 8 + ROW * 4 + 4 + 1 + 5 + ROW * 4 + noteHeight() + 4 + 1
+        return PAD + LINE + 5 + PREVIEW_H + 8 + ROW * 4 + 4 + 1 + 5 + ROW * 5 + noteHeight() + 4 + 1
                 + (rows > 0 ? 5 + ROW * rows + 4 + 1 : 0) + 8 + BUTTON_H + PAD;
     }
 
     private static int serverTop(int cardY0) {
-        return cardY0 + PAD + LINE + 5 + PREVIEW_H + 8 + ROW * 4 + 4 + 1 + 5 + ROW * 4 + noteHeight() + 4 + 1 + 5;
+        return cardY0 + PAD + LINE + 5 + PREVIEW_H + 8 + ROW * 4 + 4 + 1 + 5 + ROW * 5 + noteHeight() + 4 + 1 + 5;
     }
 
     private static String helpersNote() {
@@ -281,7 +282,7 @@ public final class SettingsScreen extends Screen {
         helperRow(g, f, "Tab fills the command", "tab_fill", cfg.tabFill, right, left, y, mouseX, mouseY);
         y += ROW;
 
-        helperRow(g, f, "Prefill signs", "autosign", cfg.autosign, right, left, y, mouseX, mouseY);
+        signRow(g, f, right, left, y, mouseX, mouseY);
         y += ROW;
 
         String note = helpersNote();
@@ -298,6 +299,11 @@ public final class SettingsScreen extends Screen {
         label(g, f, "Tell me when to come back", left, y);
         value(g, f, cfg.comebackReminders ? "On" : "Off", right, y, mouseX, mouseY,
                 step -> setComebackReminders(!cfg.comebackReminders));
+        y += ROW;
+
+        label(g, f, "Discord status", left, y);
+        value(g, f, cfg.discordStatus ? "On" : "Off", right, y, mouseX, mouseY,
+                step -> setDiscordStatus(!cfg.discordStatus));
         y += ROW;
 
         y += 4;
@@ -381,6 +387,32 @@ public final class SettingsScreen extends Screen {
             return;
         }
         value(g, f, on ? "On" : "Off", right, y, mouseX, mouseY, step -> setHelper(helper, !on));
+    }
+
+    private void signRow(GuiGraphicsExtractor g, Font f, int right, int left, int y, int mouseX, int mouseY) {
+        label(g, f, "Prefill signs", left, y);
+        AssistClient assist = AssistClient.get();
+        if (assist != null && !assist.allowed("autosign")) {
+            String unavailable = assist.helperText("autosign", "label");
+            value(g, f, unavailable == null ? "Off" : unavailable, right, y, mouseX, mouseY,
+                    step -> assist.premium("autosign"));
+            return;
+        }
+        String mode = cfg.signMode();
+        int at = Arrays.asList(ModConfig.SIGN_MODES).indexOf(mode);
+        String shown = switch (mode) {
+            case "prefill" -> "On";
+            case "clipboard" -> "Clipboard";
+            default -> "Off";
+        };
+        value(g, f, shown, right, y, mouseX, mouseY, step -> {
+            String next = ModConfig.SIGN_MODES[Math.floorMod(at + step, ModConfig.SIGN_MODES.length)];
+            if (assist != null) assist.signMode(next, this);
+            else {
+                cfg.signMode(next);
+                cfg.save();
+            }
+        });
     }
 
     private void setHelper(String helper, boolean on) {
@@ -480,7 +512,7 @@ public final class SettingsScreen extends Screen {
         cfg.highlightPulse = Look.DEFAULT.pulse().name();
         boolean hadTab = cfg.tabFill, hadSign = cfg.autosign;
         cfg.tabFill = false;
-        cfg.autosign = false;
+        cfg.signMode("off");
         cfg.save();
         AssistClient assist = AssistClient.get();
         if (assist != null && hadTab) assist.helperChanged("tab_fill", false);
@@ -497,6 +529,17 @@ public final class SettingsScreen extends Screen {
         }
         ModConfig cfg = ModConfig.get();
         cfg.npcRoute = on;
+        cfg.save();
+    }
+
+    private static void setDiscordStatus(boolean on) {
+        AssistClient client = AssistClient.get();
+        if (client != null) {
+            client.setDiscordStatus(on);
+            return;
+        }
+        ModConfig cfg = ModConfig.get();
+        cfg.discordStatus = on;
         cfg.save();
     }
 

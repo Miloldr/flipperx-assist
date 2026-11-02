@@ -42,9 +42,12 @@ public class ReportsCheck {
 
         Reports full = new Reports();
         full.numbered(true);
-        for (int i = 0; i < 4; i++) full.sent(full.next(), i);
-        check(full.holds(true, true), "Four in flight is the most");
-        full.answer(4);
+        for (int i = 0; i < Reports.MAX_IN_FLIGHT - 1; i++) full.sent(full.next(), i);
+        check(!full.holds(true, true), "A slow socket still sends a new screen at once");
+        full.sent(full.next(), Reports.MAX_IN_FLIGHT - 1);
+        check(full.holds(true, true), "MAX_IN_FLIGHT in flight is the most");
+        check(full.context(1, -1) == 0, "The oldest report in flight keeps its screen");
+        full.answer(Reports.MAX_IN_FLIGHT);
         check(!full.holds(true, true), "An answer frees them all");
 
         r.reset();

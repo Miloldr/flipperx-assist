@@ -91,6 +91,7 @@ public final class AssistState {
     private volatile String notice = null;
     private volatile long noticeUntil = 0;
     private volatile long noticeSince = 0;
+    private volatile com.flipperx.assist.net.StatusCheck.Incident incident = null;
 
     public Step step() { return step; }
     public Step previous() { return previous; }
@@ -274,6 +275,9 @@ public final class AssistState {
     public String notice() {
         return System.currentTimeMillis() < noticeUntil ? notice : null;
     }
+
+    public com.flipperx.assist.net.StatusCheck.Incident incident() { return incident; }
+    public void incident(com.flipperx.assist.net.StatusCheck.Incident value) { incident = value; }
 
     public long noticeSince() { return noticeSince; }
     public long noticeUntil() { return noticeUntil; }

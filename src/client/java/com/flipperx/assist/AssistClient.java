@@ -14,6 +14,7 @@ import com.flipperx.assist.hud.ProfitPops;
 import com.flipperx.assist.mixin.SignEditScreenAccessor;
 import com.flipperx.assist.net.AssistSocket;
 import com.flipperx.assist.net.Reports;
+import com.flipperx.assist.net.StatusCheck;
 import com.flipperx.assist.net.VersionCheck;
 import com.flipperx.assist.screen.Flex;
 import com.flipperx.assist.screen.SettingsScreen;
@@ -35,6 +36,7 @@ import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.event.Event;
 
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.gui.components.ChatComponent;
 import net.minecraft.client.gui.components.EditBox;
@@ -64,6 +66,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import net.minecraft.client.gui.screens.ChatScreen;
 
@@ -165,6 +168,15 @@ public class AssistClient implements ClientModInitializer {
     private String announcedVersion;
     private boolean notedVersion;
     private final AtomicBoolean updating = new AtomicBoolean();
+    private static final long STATUS_FIRST_MS = 5_000;
+    private static final long STATUS_EVERY_MS = 3 * 60_000;
+    private static final long STATUS_OPEN_MS = 60_000;
+    private static final long STATUS_RETRY_MAX_MS = 15 * 60_000;
+    private long statusCheckAt;
+    private long statusRetryMs = STATUS_OPEN_MS;
+    private boolean statusChecking;
+    private boolean statusWasConnected;
+    private String statusShownKey;
 
     public static AssistClient get() {
         return instance;
@@ -302,6 +314,7 @@ public class AssistClient implements ClientModInitializer {
         boolean skyBlock = Location.skyBlock();
         if (skyBlock) {
             checkVersion(client);
+            checkStatus(client);
             remindLogin(uuid);
             greet(uuid);
         }
@@ -350,6 +363,55 @@ public class AssistClient implements ClientModInitializer {
         versionChecking = true;
         noteVersion();
         VersionCheck.fetch(client::execute, this::announceUpdate, this::versionChecked);
+    }
+
+    private void checkStatus(Minecraft client) {
+        long now = System.currentTimeMillis();
+        boolean connected = socket.connected();
+        if (statusCheckAt == 0) statusCheckAt = now + STATUS_FIRST_MS;
+        if (statusWasConnected && !connected) statusCheckAt = Math.min(statusCheckAt, now + STATUS_FIRST_MS);
+        statusWasConnected = connected;
+        if (statusChecking || now < statusCheckAt) return;
+        statusChecking = true;
+        CompletableFuture<StatusCheck.Incident> asked;
+        try {
+            asked = StatusCheck.fetch("bzassist/" + VersionCheck.current());
+        } catch (RuntimeException e) {
+            statusChecked(false, null);
+            return;
+        }
+        asked.whenComplete((open, error) -> client.execute(() -> statusChecked(error == null, open)));
+    }
+
+    private void statusChecked(boolean ok, StatusCheck.Incident open) {
+        statusChecking = false;
+        long now = System.currentTimeMillis();
+        if (!ok) {
+            statusCheckAt = now + statusRetryMs;
+            statusRetryMs = Math.min(statusRetryMs * 2, STATUS_RETRY_MAX_MS);
+            return;
+        }
+        statusRetryMs = STATUS_OPEN_MS;
+        statusCheckAt = now + (open != null || !socket.connected() ? STATUS_OPEN_MS : STATUS_EVERY_MS);
+        STATE.incident(open);
+        if (open != null) {
+            if (!open.key().equals(statusShownKey)) chat(incidentLine(open));
+            statusShownKey = open.key();
+            return;
+        }
+        if (statusShownKey == null) return;
+        chat(Component.empty()
+                .append(Component.literal("Resolved: ").withStyle(ChatFormatting.GREEN))
+                .append("everything is back up."));
+        statusShownKey = null;
+    }
+
+    private static Component incidentLine(StatusCheck.Incident incident) {
+        ChatFormatting color = "downtime".equals(incident.severity()) ? ChatFormatting.RED : ChatFormatting.YELLOW;
+        return Component.empty()
+                .append(Component.literal(incident.label() + ": ").withStyle(color))
+                .append(incident.text() + " ")
+                .append(Chat.link(Chat.shortUrl(StatusCheck.PAGE), StatusCheck.PAGE));
     }
 
     private void versionChecked(boolean ok) {
@@ -1267,7 +1329,9 @@ public class AssistClient implements ClientModInitializer {
             return;
         }
         if (!STATE.linked() || !socket.connected()) {
-            chat("§e" + STATE.status());
+            StatusCheck.Incident incident = STATE.incident();
+            if (incident != null && !socket.connected() && config.tokenFor(currentUuid()) != null) chat(incidentLine(incident));
+            else chat("§e" + STATE.status());
             return;
         }
         JsonObject o = new JsonObject();

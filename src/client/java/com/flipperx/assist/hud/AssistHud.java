@@ -126,6 +126,11 @@ public final class AssistHud {
         int noticeStart = lines.size();
         addLines(lines, notice, inner, AMBER);
         int noticeEnd = lines.size();
+        var incident = state.incident();
+        if (incident != null) {
+            addLines(lines, incident.label() + ": " + incident.text(), inner,
+                    "downtime".equals(incident.severity()) ? WARN : AMBER);
+        }
         if (state.linked()) addLines(lines, state.cookieWarning(), inner, WARN);
 
         boolean money = state.linked() && (state.profit() != 0 || running);

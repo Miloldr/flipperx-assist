@@ -91,6 +91,7 @@ public class AssistClient implements ClientModInitializer {
     private KeyMapping startKey;
     private KeyMapping stopKey;
     private KeyMapping commandKey;
+    private KeyMapping passiveKey;
     private ConfirmScreen pendingConfirm;
     private final Map<String, JsonObject> helpers = new HashMap<>();
     private final Set<String> helpersStopped = new HashSet<>();
@@ -267,6 +268,9 @@ public class AssistClient implements ClientModInitializer {
         commandKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.bzassist.command", Compat.keyboard(), Compat.KEY_B,
                 category));
+        passiveKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+                "key.bzassist.passive", Compat.keyboard(), Compat.KEY_SEMICOLON,
+                category));
 
         HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("bzassist", "panel"),
                 (graphics, tickCounter) -> {
@@ -379,6 +383,7 @@ public class AssistClient implements ClientModInitializer {
         while (startKey.consumeClick()) if (skyBlock) start();
         while (stopKey.consumeClick()) if (skyBlock) stop();
         while (commandKey.consumeClick()) if (skyBlock) sendStepCommand(client);
+        while (passiveKey.consumeClick()) if (skyBlock) passive("");
         if (skyBlock) fillSign();
 
         maybeOpenSummary();
@@ -1335,6 +1340,7 @@ public class AssistClient implements ClientModInitializer {
         JsonObject keys = new JsonObject();
         if (startKey != null && !startKey.isUnbound()) keys.addProperty("start", startKey.getTranslatedKeyMessage().getString());
         if (stopKey != null && !stopKey.isUnbound()) keys.addProperty("stop", stopKey.getTranslatedKeyMessage().getString());
+        if (passiveKey != null && !passiveKey.isUnbound()) keys.addProperty("passive", passiveKey.getTranslatedKeyMessage().getString());
         o.add("keys", keys);
         o.add("hooks", Hooks.get());
         socket.send(o);
@@ -1463,6 +1469,7 @@ public class AssistClient implements ClientModInitializer {
                 && GameUtil.currentScreen().getFocused() instanceof EditBox) return false;
         if (startKey != null && startKey.matches(event)) { start(); return true; }
         if (stopKey != null && stopKey.matches(event)) { stop(); return true; }
+        if (passiveKey != null && passiveKey.matches(event)) { passive(""); return true; }
         if (commandKey != null && commandKey.matches(event)) return commandKeyInMenu();
         return false;
     }
@@ -1682,7 +1689,7 @@ public class AssistClient implements ClientModInitializer {
         chat("§e/flipperx stop §7or §e" + keyName(stopKey) + " §7pause   §e/flipperx logout §7unlink");
         chat("§e/flipperx break §7stop for now, get told when to come back");
         chat("§e/flipperx warmup §7set bigger buy orders up now, flip once they've filled");
-        chat("§e/flipperx passive §7set up passive flips, or check up on them");
+        chat("§e/flipperx passive §7or §e" + keyName(passiveKey) + " §7set up passive flips, or check up on them");
         chat("§e/flipperx notify off §7no more reminders to come back");
         chat("§e/flipperx reminders off §7no login reminders while logged out");
         chat("§e/flipperx feedback §7tell us what you think   §e/flipperx discord §7questions and bug reports");
@@ -1690,6 +1697,16 @@ public class AssistClient implements ClientModInitializer {
 
     private static String keyName(KeyMapping key) {
         return key == null ? "?" : key.getTranslatedKeyMessage().getString();
+    }
+
+    public KeyMapping key(String which) {
+        return switch (which) {
+            case "start" -> startKey;
+            case "stop" -> stopKey;
+            case "passive" -> passiveKey;
+            case "command" -> commandKey;
+            default -> null;
+        };
     }
 
     public void discord() {

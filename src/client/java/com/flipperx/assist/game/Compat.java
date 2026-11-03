@@ -94,6 +94,10 @@ public final class Compat {
     public static final int KEY_LBRACKET = key("KEY_LBRACKET");
     public static final int KEY_RBRACKET = key("KEY_RBRACKET");
     public static final int KEY_B = key("KEY_B");
+    public static final int KEY_SEMICOLON = key("KEY_SEMICOLON");
+    public static final int KEY_ESCAPE = key("KEY_ESCAPE");
+    public static final int KEY_BACKSPACE = key("KEY_BACKSPACE");
+    public static final int KEY_DELETE = key("KEY_DELETE");
 
     private static final int[] MODIFIER_KEYS = java.util.stream.Stream.of(
                     "KEY_LSHIFT", "KEY_RSHIFT", "KEY_LCONTROL", "KEY_RCONTROL", "KEY_LALT", "KEY_RALT",

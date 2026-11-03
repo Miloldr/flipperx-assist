@@ -68,6 +68,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import net.minecraft.client.gui.screens.ChatScreen;
 
@@ -118,6 +121,18 @@ public class AssistClient implements ClientModInitializer {
     private boolean forceReport;
     private boolean discardStep;
     private final AtomicBoolean flushQueued = new AtomicBoolean();
+    private static final long MENU_QUIET_NS = TimeUnit.MILLISECONDS.toNanos(8);
+    private static final long MENU_HOLD_NS = TimeUnit.MILLISECONDS.toNanos(40);
+    private static final long MENU_STUCK_NS = TimeUnit.SECONDS.toNanos(1);
+    private static final long FILLER_HOLD_MS = 300;
+    private long fillerSince;
+    private static final ScheduledExecutorService FLUSH_TIMER = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "bzassist-flush");
+        t.setDaemon(true);
+        return t;
+    });
+    private volatile long menuPacketAt;
+    private volatile long menuHeldSince;
     private int lastShape;
     private int reportedShape;
     private long shapeSince;
@@ -207,15 +222,31 @@ public class AssistClient implements ClientModInitializer {
         o.addProperty("view_id", System.identityHashCode(GameUtil.currentScreen()));
         client.clickToReport = o;
         client.forceReport = true;
-        menuChanged();
+        Minecraft.getInstance().execute(() -> {
+            if (Minecraft.getInstance().player != null) client.maybeReport();
+        });
     }
 
     public static void menuChanged() {
         AssistClient client = instance;
-        if (client == null || !client.flushQueued.compareAndSet(false, true)) return;
+        if (client == null) return;
+        long now = System.nanoTime();
+        client.menuPacketAt = now;
+        if (!client.flushQueued.compareAndSet(false, true)) return;
+        client.menuHeldSince = now;
+        FLUSH_TIMER.schedule(client::flushWhenQuiet, MENU_QUIET_NS, TimeUnit.NANOSECONDS);
+    }
+
+    private void flushWhenQuiet() {
+        long now = System.nanoTime();
+        long wait = Math.min(MENU_QUIET_NS - (now - menuPacketAt), MENU_HOLD_NS - (now - menuHeldSince));
+        if (wait > 0) {
+            FLUSH_TIMER.schedule(this::flushWhenQuiet, wait, TimeUnit.NANOSECONDS);
+            return;
+        }
         Minecraft.getInstance().execute(() -> {
-            client.flushQueued.set(false);
-            if (Minecraft.getInstance().player != null) client.maybeReport();
+            flushQueued.set(false);
+            if (Minecraft.getInstance().player != null) maybeReport();
         });
     }
 
@@ -351,7 +382,7 @@ public class AssistClient implements ClientModInitializer {
         if (skyBlock) fillSign();
 
         maybeOpenSummary();
-        maybeReport();
+        if (!flushQueued.get() || System.nanoTime() - menuHeldSince > MENU_STUCK_NS) maybeReport();
     }
 
     private void checkVersion(Minecraft client) {
@@ -902,6 +933,10 @@ public class AssistClient implements ClientModInitializer {
         if (menu != null) for (var slot : menu.slots) {
             names.put(slot.index, GameUtil.rawName(slot.getItem()));
         }
+        if (!forceReport && changed && context == reportedContext && onlyFillerCame(names)) {
+            if (fillerSince == 0) fillerSince = now;
+            if (now - fillerSince < FILLER_HOLD_MS) return;
+        }
         JsonObject tick = ScreenReader.tick();
         tick.addProperty("quiet_ms", Math.max(0, now - shapeSince));
         if (clickToReport != null) tick.add("clicked", clickToReport);
@@ -918,7 +953,24 @@ public class AssistClient implements ClientModInitializer {
         lastTickAt = now;
         reportedContext = context;
         reportedSlotNames = names;
+        fillerSince = 0;
         reports.sent(seq, context);
+    }
+
+    private boolean onlyFillerCame(Map<Integer, String> names) {
+        if (!names.keySet().equals(reportedSlotNames.keySet())) return false;
+        boolean came = false;
+        for (var e : names.entrySet()) {
+            String was = reportedSlotNames.get(e.getKey());
+            if (e.getValue().equals(was)) continue;
+            if (!blank(was) || !blank(e.getValue())) return false;
+            came = true;
+        }
+        return came;
+    }
+
+    private static boolean blank(String name) {
+        return name == null || GameUtil.strip(name).trim().isEmpty();
     }
 
     private void noteShape(long now) {

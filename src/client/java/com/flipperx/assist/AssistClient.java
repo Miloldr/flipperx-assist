@@ -131,7 +131,7 @@ public class AssistClient implements ClientModInitializer {
     private static final long PREFETCH_TTL_MS = 15_000;
     private int clickedSlot = -1;
     private int clickedHash;
-    private long landedSeq = -1;
+    private long aheadSeq = -1;
 
     private record Target(AssistState.Step step, String on, String title, boolean prefix,
                           List<String> names, boolean inv, String after) {}
@@ -311,7 +311,7 @@ public class AssistClient implements ClientModInitializer {
             reports.reset();
             discardStep = false;
             prefetch = null;
-            landedSeq = -1;
+            aheadSeq = -1;
             clickedSlot = -1;
         }
         boolean skyBlock = Location.skyBlock();
@@ -1062,10 +1062,8 @@ public class AssistClient implements ClientModInitializer {
         prefetch = p.rest().isEmpty() ? null
                 : new Prefetch(p.rest().get(0), context, System.currentTimeMillis() + PREFETCH_TTL_MS,
                 p.rest().subList(1, p.rest().size()));
-        if (landing) {
-            clickedSlot = -1;
-            landedSeq = reports.next() - 1;
-        }
+        if (landing) clickedSlot = -1;
+        aheadSeq = reports.next() - 1;
         STATE.receiveStep(t.step().ahead(slot, STATE.step()), false);
         acceptedContext = context;
         acceptedSlotName = name;
@@ -1179,7 +1177,7 @@ public class AssistClient implements ClientModInitializer {
                 long seq = msg.has("seq") && !msg.get("seq").isJsonNull() ? msg.get("seq").getAsLong() : -1;
                 int answered = reports.context(seq, reportedContext);
                 if (reports.stale(seq)) {
-                    if (!discardStep && STATE.running() && seq > landedSeq) {
+                    if (!discardStep && STATE.running() && seq > aheadSeq) {
                         notePrefetch(msg, answered, false);
                         showEarly(msg, answered);
                     }
@@ -1201,7 +1199,7 @@ public class AssistClient implements ClientModInitializer {
                         chat("§e" + STATE.status() + " " + startAgain());
                     }
                 }
-                if (seq >= 0 && seq <= landedSeq) {
+                if (seq >= 0 && seq <= aheadSeq) {
                     forceReport = true;
                     return;
                 }

@@ -8,10 +8,15 @@ import com.flipperx.assist.hud.SlotHighlight;
 import com.flipperx.assist.hud.SlotHighlight.Look;
 import com.flipperx.assist.hud.SlotHighlight.Pulse;
 
+import com.mojang.blaze3d.platform.InputConstants;
+
+import net.minecraft.client.KeyMapping;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
@@ -54,6 +59,10 @@ public final class SettingsScreen extends Screen {
             0x3D8BE8, 0xE8A33D, 0xFFFFFF, 0xFFE14D, 0x7DDF3C, 0x3FC8FF, 0xE64CFF, 0xFF4A4A};
     private static final int[] PREVIEW_PATH = {15, 16, 10};
     private static final int PREVIEW_RIGHT = 1;
+    private static final int CLASH = 0xFF5A5A;
+    private static final String[][] KEYS = {
+            {"start", "Start"}, {"stop", "Stop"}, {"passive", "Passive"}};
+    private static final int KEYS_H = 5 + LINE + 5 + ROW * KEYS.length + 4 + 1;
 
     private record Hit(int x0, int y0, int x1, int y1, IntConsumer action) {
         boolean contains(double x, double y) {
@@ -76,6 +85,7 @@ public final class SettingsScreen extends Screen {
     private int viewY0, viewY1, scroll, maxScroll;
     private int clipY0 = Integer.MIN_VALUE, clipY1 = Integer.MAX_VALUE;
     private float a;
+    private String capturing;
 
     public SettingsScreen() {
         super(Component.literal("Bazaar Assist settings"));
@@ -98,7 +108,7 @@ public final class SettingsScreen extends Screen {
     private static final int COLOR_ROW = LINE + 5 + PREVIEW_H + 8;
 
     private static int serverTop() {
-        return COLOR_ROW + ROW * 4 + 4 + 1 + 5 + ROW * 5 + noteHeight() + 4 + 1 + 5;
+        return COLOR_ROW + ROW * 4 + 4 + 1 + 5 + ROW * 5 + noteHeight() + 4 + 1 + KEYS_H + 5;
     }
 
     private static int bodyHeight() {
@@ -346,6 +356,23 @@ public final class SettingsScreen extends Screen {
         g.fill(left, y, right, y + 1, color(AssistHud.BORDER));
         y += 1;
 
+        y += 5;
+        int keysY = y;
+        y += LINE + 5;
+        String hint = capturing != null ? "Esc cancels, Backspace clears" : "Right click clears";
+        for (String[] k : KEYS) {
+            String clash = keyRow(g, f, k[0], k[1], left, right, y, mouseX, mouseY);
+            if (clash != null && capturing == null) hint = clash;
+            y += ROW;
+        }
+        g.text(f, "Keys", left, keysY, color(AssistHud.TEXT), false);
+        int room = right - left - f.width("Keys") - 12;
+        while (f.width(hint) > room && hint.length() > 1) hint = hint.substring(0, hint.length() - 1);
+        g.text(f, hint, right - f.width(hint), keysY, color(AssistHud.DIM), false);
+        y += 4;
+        g.fill(left, y, right, y + 1, color(AssistHud.BORDER));
+        y += 1;
+
         List<JsonObject> rows = serverRows();
         if (!rows.isEmpty()) {
             y += 5;
@@ -421,6 +448,68 @@ public final class SettingsScreen extends Screen {
             }
             default -> label(g, f, text, left, y);
         }
+    }
+
+    private static KeyMapping keyFor(String which) {
+        AssistClient client = AssistClient.get();
+        return client == null || which == null ? null : client.key(which);
+    }
+
+    private String keyRow(GuiGraphicsExtractor g, Font f, String which, String text, int left, int right, int y,
+                          int mouseX, int mouseY) {
+        label(g, f, text, left, y);
+        KeyMapping key = keyFor(which);
+        if (key == null) {
+            value(g, f, "?", right, y, mouseX, mouseY, step -> {});
+            return null;
+        }
+        boolean waiting = which.equals(capturing);
+        String shown = waiting ? "Press a key" : key.isUnbound() ? "None" : key.getTranslatedKeyMessage().getString();
+        String clash = waiting ? null : clashWith(key);
+        int tint = waiting ? AssistHud.AMBER : clash != null ? CLASH : -1;
+        int y0 = y + (ROW - CONTROL_H) / 2;
+        button(g, f, shown, right - VALUE_W, y0, right, y0 + CONTROL_H, mouseX, mouseY, tint, step -> {
+            setFocused(null);
+            if (step < 0) {
+                bind(key, InputConstants.UNKNOWN);
+                capturing = null;
+            } else {
+                capturing = which;
+            }
+        });
+        boolean hover = mouseX >= left && mouseX < right && mouseY >= Math.max(y, clipY0)
+                && mouseY < Math.min(y + ROW, clipY1);
+        return hover && clash != null ? "Also used by " + clash : null;
+    }
+
+    private static String clashWith(KeyMapping key) {
+        if (key.isUnbound()) return null;
+        for (KeyMapping other : Minecraft.getInstance().options.keyMappings) {
+            KeyMapping.Category c = other.getCategory();
+            if (c == KeyMapping.Category.DEBUG || c == KeyMapping.Category.CREATIVE
+                    || c == KeyMapping.Category.SPECTATOR) continue;
+            if (other != key && key.same(other)) return Component.translatable(other.getName()).getString();
+        }
+        return null;
+    }
+
+    private static void bind(KeyMapping key, InputConstants.Key to) {
+        key.setKey(to);
+        KeyMapping.resetMapping();
+        Minecraft.getInstance().options.save();
+    }
+
+    @Override
+    public boolean keyPressed(KeyEvent event) {
+        KeyMapping key = keyFor(capturing);
+        if (key == null) return super.keyPressed(event);
+        int code = event.key();
+        if (code != Compat.KEY_ESCAPE) {
+            boolean clear = code == Compat.KEY_BACKSPACE || code == Compat.KEY_DELETE;
+            bind(key, clear ? InputConstants.UNKNOWN : InputConstants.getKey(event));
+        }
+        capturing = null;
+        return true;
     }
 
     private void helperRow(GuiGraphicsExtractor g, Font f, String text, String helper, boolean on,
@@ -545,11 +634,17 @@ public final class SettingsScreen extends Screen {
 
     private void button(GuiGraphicsExtractor g, Font f, String label, int x0, int y0, int x1, int y1,
                         int mouseX, int mouseY, IntConsumer action) {
+        button(g, f, label, x0, y0, x1, y1, mouseX, mouseY, -1, action);
+    }
+
+    private void button(GuiGraphicsExtractor g, Font f, String label, int x0, int y0, int x1, int y1,
+                        int mouseX, int mouseY, int tint, IntConsumer action) {
         boolean hover = mouseX >= x0 && mouseX < x1 && mouseY >= Math.max(y0, clipY0) && mouseY < Math.min(y1, clipY1);
         g.fill(x0, y0, x1, y1, color(hover ? 0x2E2E2E : BUTTON));
         box(g, x0, y0, x1, y1, color(hover ? 0x5A5A5A : 0x3A3A3A));
+        int text = tint >= 0 ? tint : hover ? AssistHud.AMBER : AssistHud.TEXT;
         g.text(f, label, x0 + (x1 - x0 - f.width(label)) / 2 + 1, y0 + (y1 - y0 - 7) / 2,
-                color(hover ? AssistHud.AMBER : AssistHud.TEXT), false);
+                color(text), false);
         hit(x0, y0, x1, y1, action);
     }
 
@@ -573,6 +668,18 @@ public final class SettingsScreen extends Screen {
         if (assist != null && hadSign) assist.helperChanged("autosign", false);
         hex.setValue(cfg.highlightColor);
         if (cfg.npcRoute) setNpcRoute(false);
+        capturing = null;
+        boolean keysChanged = false;
+        for (String[] k : KEYS) {
+            KeyMapping key = keyFor(k[0]);
+            if (key == null || key.isDefault()) continue;
+            key.setKey(key.getDefaultKey());
+            keysChanged = true;
+        }
+        if (keysChanged) {
+            KeyMapping.resetMapping();
+            Minecraft.getInstance().options.save();
+        }
     }
 
     private static void setNpcRoute(boolean on) {
@@ -628,6 +735,7 @@ public final class SettingsScreen extends Screen {
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubled) {
         double mx = event.x(), my = event.y();
+        capturing = null;
         for (Hit hit : hits) {
             if (!hit.contains(mx, my)) continue;
             hit.action().accept(event.button() == 1 ? -1 : 1);

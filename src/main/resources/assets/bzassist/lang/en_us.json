@@ -2,5 +2,6 @@
   "key.bzassist.start": "Start Bazaar Assist",
   "key.bzassist.stop": "Stop Bazaar Assist",
   "key.bzassist.command": "Send the command on the panel",
+  "key.bzassist.passive": "Set up or check in on passive",
   "key.category.bzassist.general": "Bazaar Assist"
 }

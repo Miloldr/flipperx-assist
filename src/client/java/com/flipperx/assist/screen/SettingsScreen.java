@@ -71,7 +71,10 @@ public final class SettingsScreen extends Screen {
     private final Map<String, String> sent = new HashMap<>();
     private int serverVersion = -1;
     private boolean noteShown;
+    private final Map<EditBox, Integer> inputY = new HashMap<>();
     private int cardX0, cardY0, cardX1, cardY1;
+    private int viewY0, viewY1, scroll, maxScroll;
+    private int clipY0 = Integer.MIN_VALUE, clipY1 = Integer.MAX_VALUE;
     private float a;
 
     public SettingsScreen() {
@@ -91,14 +94,16 @@ public final class SettingsScreen extends Screen {
         return stack;
     }
 
-    private static int cardHeight() {
-        int rows = serverRows().size();
-        return PAD + LINE + 5 + PREVIEW_H + 8 + ROW * 4 + 4 + 1 + 5 + ROW * 5 + noteHeight() + 4 + 1
-                + (rows > 0 ? 5 + ROW * rows + 4 + 1 : 0) + 8 + BUTTON_H + PAD;
+    private static final int FOOTER = 8 + BUTTON_H + PAD;
+    private static final int COLOR_ROW = LINE + 5 + PREVIEW_H + 8;
+
+    private static int serverTop() {
+        return COLOR_ROW + ROW * 4 + 4 + 1 + 5 + ROW * 5 + noteHeight() + 4 + 1 + 5;
     }
 
-    private static int serverTop(int cardY0) {
-        return cardY0 + PAD + LINE + 5 + PREVIEW_H + 8 + ROW * 4 + 4 + 1 + 5 + ROW * 5 + noteHeight() + 4 + 1 + 5;
+    private static int bodyHeight() {
+        int rows = serverRows().size();
+        return serverTop() - 5 + (rows > 0 ? 5 + ROW * rows + 4 + 1 : 0);
     }
 
     private static String helpersNote() {
@@ -126,16 +131,22 @@ public final class SettingsScreen extends Screen {
     protected void init() {
         noteShown = helpersNote() != null;
         int w = Math.min(MAX_W, width - 24);
-        int h = cardHeight();
+        int body = bodyHeight();
+        int h = Math.min(PAD + body + FOOTER, Math.max(PAD + ROW * 3 + FOOTER, height - 16));
         cardX0 = (width - w) / 2;
         cardY0 = Math.max(8, (height - h) / 2);
         cardX1 = cardX0 + w;
         cardY1 = cardY0 + h;
+        viewY0 = cardY0 + PAD;
+        viewY1 = cardY1 - FOOTER;
+        maxScroll = Math.max(0, body - (viewY1 - viewY0));
+        scroll = Math.max(0, Math.min(scroll, maxScroll));
+        inputY.clear();
 
-        int colorRow = cardY0 + PAD + LINE + 5 + PREVIEW_H + 8;
         int boxX = cardX1 - PAD - HEX_W;
-        int boxY = colorRow + (ROW - CONTROL_H) / 2;
-        hex = new EditBox(font, boxX + 5, boxY + 4, HEX_W - 7, 8, Component.literal("Color"));
+        int boxY = COLOR_ROW + (ROW - CONTROL_H) / 2;
+        hex = new EditBox(font, boxX + 5, 0, HEX_W - 7, 8, Component.literal("Color"));
+        inputY.put(hex, boxY + 4);
         hex.setBordered(false);
         hex.setMaxLength(24);
         hex.setTextColor(0xFFE8E8E8);
@@ -156,13 +167,14 @@ public final class SettingsScreen extends Screen {
         }
         serverVersion = AssistClient.state().serverSettingsVersion();
         inputs.clear();
-        int y = serverTop(cardY0);
+        int y = serverTop();
         for (JsonObject r : serverRows()) {
             if ("text".equals(str(r, "kind"))) {
                 String key = str(r, "key");
                 int x0 = cardX1 - PAD - VALUE_W;
                 int y0 = y + (ROW - CONTROL_H) / 2;
-                EditBox box = new EditBox(font, x0 + 5, y0 + 4, VALUE_W - 7, 8, Component.literal(str(r, "label")));
+                EditBox box = new EditBox(font, x0 + 5, 0, VALUE_W - 7, 8, Component.literal(str(r, "label")));
+                inputY.put(box, y0 + 4);
                 box.setBordered(false);
                 box.setMaxLength(r.has("max") ? Math.max(1, r.get("max").getAsInt()) : 64);
                 box.setTextColor(0xFFE8E8E8);
@@ -173,6 +185,26 @@ public final class SettingsScreen extends Screen {
             }
             y += ROW;
         }
+        placeInputs();
+    }
+
+    private void placeInputs() {
+        int top = viewY0 - scroll;
+        for (Map.Entry<EditBox, Integer> e : inputY.entrySet()) {
+            EditBox box = e.getKey();
+            int y = top + e.getValue();
+            box.setY(y);
+            box.visible = y >= viewY0 && y + 8 <= viewY1;
+            if (!box.visible && box.isFocused()) setFocused(null);
+        }
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        if (maxScroll <= 0 || scrollY == 0) return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+        scroll = Math.max(0, Math.min(maxScroll, scroll - (int) Math.round(scrollY * ROW)));
+        placeInputs();
+        return true;
     }
 
     @Override
@@ -238,7 +270,11 @@ public final class SettingsScreen extends Screen {
 
         g.fill(cardX0, cardY0, cardX1, cardY1, color(CARD));
         box(g, cardX0, cardY0, cardX1, cardY1, color(AssistHud.BORDER));
-        int left = cardX0 + PAD, right = cardX1 - PAD, y = cardY0 + PAD;
+        int left = cardX0 + PAD, right = cardX1 - PAD, y = viewY0 - scroll;
+        placeInputs();
+        g.enableScissor(cardX0 + 1, viewY0, cardX1 - 1, viewY1);
+        clipY0 = viewY0;
+        clipY1 = viewY1;
 
         g.text(f, "Slot highlight", left, y, color(AssistHud.TEXT), false);
         y += LINE + 5;
@@ -319,9 +355,22 @@ public final class SettingsScreen extends Screen {
             }
             y += 4;
             g.fill(left, y, right, y + 1, color(AssistHud.BORDER));
-            y += 1;
         }
-        y += 8;
+
+        super.extractRenderState(g, mouseX, mouseY, delta);
+        g.disableScissor();
+        clipY0 = Integer.MIN_VALUE;
+        clipY1 = Integer.MAX_VALUE;
+
+        if (maxScroll > 0) {
+            int track = viewY1 - viewY0;
+            int thumb = Math.max(12, track * track / (track + maxScroll));
+            int ty = viewY0 + (track - thumb) * scroll / maxScroll;
+            g.fill(cardX1 - 4, viewY0, cardX1 - 2, viewY1, color(0x1E1E1E));
+            g.fill(cardX1 - 4, ty, cardX1 - 2, ty + thumb, color(0x5A5A5A));
+            if (scroll < maxScroll) g.fill(left, viewY1 - 1, right, viewY1, color(AssistHud.BORDER));
+        }
+        y = viewY1 + 8;
 
         String done = "Done";
         int doneX0 = right - f.width(done) - 24;
@@ -330,8 +379,6 @@ public final class SettingsScreen extends Screen {
         int resetX1 = doneX0 - 4;
         button(g, f, reset, resetX1 - f.width(reset) - 24, y, resetX1, y + BUTTON_H, mouseX, mouseY,
                 step -> reset());
-
-        super.extractRenderState(g, mouseX, mouseY, delta);
     }
 
     private void serverRow(GuiGraphicsExtractor g, Font f, JsonObject r, int left, int right, int y,
@@ -472,17 +519,18 @@ public final class SettingsScreen extends Screen {
 
     private void swatch(GuiGraphicsExtractor g, int rgb, int sx, int sy, Look look, int mouseX, int mouseY) {
         boolean picked = rgb == look.rgb();
-        boolean hover = mouseX >= sx - 1 && mouseX < sx + SWATCH + 1 && mouseY >= sy - 1 && mouseY < sy + SWATCH + 1;
+        boolean hover = mouseX >= sx - 1 && mouseX < sx + SWATCH + 1 && mouseY >= Math.max(sy - 1, clipY0)
+                && mouseY < Math.min(sy + SWATCH + 1, clipY1);
         if (picked || hover) {
             box(g, sx - 2, sy - 2, sx + SWATCH + 2, sy + SWATCH + 2,
                     color(picked ? AssistHud.TEXT : 0x5A5A5A));
         }
         g.fill(sx, sy, sx + SWATCH, sy + SWATCH, color(rgb));
-        hits.add(new Hit(sx - 1, sy - 1, sx + SWATCH + 1, sy + SWATCH + 1, step -> {
+        hit(sx - 1, sy - 1, sx + SWATCH + 1, sy + SWATCH + 1, step -> {
             cfg.highlightColor = SlotHighlight.formatColor(rgb);
             cfg.save();
             hex.setValue(cfg.highlightColor);
-        }));
+        });
     }
 
     private void label(GuiGraphicsExtractor g, Font f, String text, int x, int rowY) {
@@ -497,12 +545,18 @@ public final class SettingsScreen extends Screen {
 
     private void button(GuiGraphicsExtractor g, Font f, String label, int x0, int y0, int x1, int y1,
                         int mouseX, int mouseY, IntConsumer action) {
-        boolean hover = mouseX >= x0 && mouseX < x1 && mouseY >= y0 && mouseY < y1;
+        boolean hover = mouseX >= x0 && mouseX < x1 && mouseY >= Math.max(y0, clipY0) && mouseY < Math.min(y1, clipY1);
         g.fill(x0, y0, x1, y1, color(hover ? 0x2E2E2E : BUTTON));
         box(g, x0, y0, x1, y1, color(hover ? 0x5A5A5A : 0x3A3A3A));
         g.text(f, label, x0 + (x1 - x0 - f.width(label)) / 2 + 1, y0 + (y1 - y0 - 7) / 2,
                 color(hover ? AssistHud.AMBER : AssistHud.TEXT), false);
-        hits.add(new Hit(x0, y0, x1, y1, action));
+        hit(x0, y0, x1, y1, action);
+    }
+
+    private void hit(int x0, int y0, int x1, int y1, IntConsumer action) {
+        y0 = Math.max(y0, clipY0);
+        y1 = Math.min(y1, clipY1);
+        if (y1 > y0) hits.add(new Hit(x0, y0, x1, y1, action));
     }
 
     private void reset() {
@@ -582,6 +636,10 @@ public final class SettingsScreen extends Screen {
         }
         if (mx < cardX0 || mx >= cardX1 || my < cardY0 || my >= cardY1) {
             onClose();
+            return true;
+        }
+        if (my < viewY0 || my >= viewY1) {
+            setFocused(null);
             return true;
         }
         return super.mouseClicked(event, doubled);

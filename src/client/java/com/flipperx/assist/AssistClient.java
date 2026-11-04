@@ -1415,7 +1415,6 @@ public class AssistClient implements ClientModInitializer {
         if (!announce) o.addProperty("resume", true);
         socket.send(o);
         startedLocally();
-        if (announce) chat("§aOn. Do what the panel says; it never clicks for you.");
     }
 
     private void startedLocally() {

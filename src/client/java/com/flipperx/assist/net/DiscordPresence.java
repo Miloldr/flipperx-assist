@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -34,6 +35,11 @@ public final class DiscordPresence {
     private Pipe pipe;
     private String pipeClient;
     private boolean shown;
+    private volatile String result;
+
+    public String result() {
+        return result;
+    }
 
     public void update(JsonObject presence) {
         synchronized (lock) {
@@ -74,10 +80,13 @@ public final class DiscordPresence {
             try {
                 apply(want);
                 retryAt = 0;
+                result = shown ? "ok" : "cleared";
             } catch (IOException | RuntimeException e) {
                 close();
                 shown = false;
                 retryAt = want == null ? 0 : System.currentTimeMillis() + RETRY_MS;
+                String text = e.getClass().getSimpleName() + ": " + e.getMessage();
+                result = text.length() > 300 ? text.substring(0, 300) : text;
             }
         }
     }
@@ -125,7 +134,7 @@ public final class DiscordPresence {
                 }
             }
         }
-        throw last != null ? last : new IOException("discord is not running");
+        throw last != null ? last : new IOException("no discord-ipc socket found");
     }
 
     private void send(JsonElement activity) throws IOException {
@@ -139,7 +148,18 @@ public final class DiscordPresence {
         cmd.addProperty("nonce", UUID.randomUUID().toString());
         write(pipe, 1, cmd);
         Frame answer = read(pipe);
-        if (answer.op == 2) throw new IOException("discord closed the connection");
+        if (answer.op == 2) throw new IOException("discord closed the connection: " + answer.body);
+        JsonElement parsed = JsonParser.parseString(answer.body);
+        if (parsed.isJsonObject() && "ERROR".equals(text(parsed.getAsJsonObject(), "evt"))) {
+            JsonElement data = parsed.getAsJsonObject().get("data");
+            String why = data != null && data.isJsonObject() ? text(data.getAsJsonObject(), "message") : null;
+            throw new IOException("discord refused the status: " + (why != null ? why : answer.body));
+        }
+    }
+
+    private static String text(JsonObject o, String key) {
+        JsonElement e = o.get(key);
+        return e != null && e.isJsonPrimitive() ? e.getAsString() : null;
     }
 
     private void close() {

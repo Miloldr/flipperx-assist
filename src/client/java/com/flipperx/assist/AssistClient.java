@@ -144,6 +144,9 @@ public class AssistClient implements ClientModInitializer {
     private Prefetch prefetch;
     private final DiscordPresence presence = new DiscordPresence();
     private JsonObject lastPresence;
+    private boolean presenceAway;
+    private String sentPresenceResult;
+    private long sentPresenceGeneration = -1;
     private static final long PREFETCH_TTL_MS = 15_000;
     private int clickedSlot = -1;
     private int clickedHash;
@@ -350,10 +353,18 @@ public class AssistClient implements ClientModInitializer {
             clickedSlot = -1;
         }
         boolean skyBlock = Location.skyBlock();
-        if (!skyBlock || !socket.connected()) {
+        if (!socket.connected()) {
             lastPresence = null;
+            presenceAway = false;
             presence.clear();
+        } else if (!skyBlock) {
+            if (!presenceAway) presence.clear();
+            presenceAway = true;
+        } else if (presenceAway) {
+            presenceAway = false;
+            if (config.discordStatus && lastPresence != null) presence.update(lastPresence);
         }
+        reportPresence();
         if (skyBlock) {
             checkVersion(client);
             checkStatus(client);
@@ -1537,6 +1548,20 @@ public class AssistClient implements ClientModInitializer {
         socket.send(o);
     }
 
+    private void reportPresence() {
+        String result = presence.result();
+        if (result == null || !STATE.linked() || !socket.connected()) return;
+        long generation = socket.generation();
+        if (result.equals(sentPresenceResult) && generation == sentPresenceGeneration) return;
+        JsonObject o = new JsonObject();
+        o.addProperty("type", "presence_result");
+        o.addProperty("result", result);
+        o.addProperty("os", System.getProperty("os.name", ""));
+        if (!socket.send(o)) return;
+        sentPresenceResult = result;
+        sentPresenceGeneration = generation;
+    }
+
     private void onPresence(JsonObject msg) {
         JsonElement p = msg.get("presence");
         lastPresence = p != null && p.isJsonObject() ? p.getAsJsonObject() : null;
@@ -1544,7 +1569,7 @@ public class AssistClient implements ClientModInitializer {
             presence.clear();
             return;
         }
-        presence.update(lastPresence);
+        if (!presenceAway) presence.update(lastPresence);
         if (!config.discordNoticed && msg.has("notice") && msg.get("notice").isJsonPrimitive()) {
             config.discordNoticed = true;
             config.save();
@@ -1556,7 +1581,7 @@ public class AssistClient implements ClientModInitializer {
         config.discordStatus = on;
         config.discordNoticed = true;
         config.save();
-        if (on && lastPresence != null) presence.update(lastPresence);
+        if (on && lastPresence != null && !presenceAway) presence.update(lastPresence);
         else presence.clear();
     }
 

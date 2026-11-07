@@ -51,7 +51,9 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.network.Connection;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.resources.Identifier;
+import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.util.Util;
@@ -1322,6 +1324,7 @@ public class AssistClient implements ClientModInitializer {
                 if (line != null) raw(line);
             }
             case "toast" -> toast(msg);
+            case "sound" -> sound(msg);
             case "helpers" -> helpers(msg);
             case "presence" -> onPresence(msg);
             case "settings" -> STATE.serverSettings(msg.has("rows") && msg.get("rows").isJsonArray()
@@ -1679,6 +1682,26 @@ public class AssistClient implements ClientModInitializer {
             if (toasts != null) {
                 SystemToast.addOrUpdate(toasts, SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
                         Component.literal(title), Component.literal(text));
+            }
+        });
+    }
+
+    private static void sound(JsonObject msg) {
+        if (!msg.has("steps") || !msg.get("steps").isJsonArray()) return;
+        var steps = msg.getAsJsonArray("steps");
+        Minecraft.getInstance().execute(() -> {
+            var sounds = Minecraft.getInstance().getSoundManager();
+            for (JsonElement el : steps) {
+                if (!el.isJsonObject()) continue;
+                JsonObject step = el.getAsJsonObject();
+                Identifier id = step.has("id") ? Identifier.tryParse(step.get("id").getAsString()) : null;
+                if (id == null) continue;
+                float pitch = step.has("pitch") ? step.get("pitch").getAsFloat() : 1f;
+                float volume = step.has("volume") ? step.get("volume").getAsFloat() : 1f;
+                int ticks = step.has("delay_ms") ? Math.round(step.get("delay_ms").getAsInt() / 50f) : 0;
+                var instance = SimpleSoundInstance.forUI(SoundEvent.createVariableRangeEvent(id), pitch, volume);
+                if (ticks > 0) sounds.playDelayed(instance, ticks);
+                else sounds.play(instance);
             }
         });
     }

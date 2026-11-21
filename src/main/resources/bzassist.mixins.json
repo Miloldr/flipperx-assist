@@ -23,7 +23,9 @@
     "CoflDescriptionMixin",
     "CoflChatMixin",
     "CoflMessageMixin",
-    "CoflInfoDisplayMixin"
+    "CoflInfoDisplayMixin",
+    "CoflChartMixin",
+    "BtrBzMixin"
   ],
   "injectors": {
     "defaultRequire": 1

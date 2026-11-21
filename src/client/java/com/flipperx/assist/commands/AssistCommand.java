@@ -182,6 +182,19 @@ public final class AssistCommand {
                         .then(ClientCommands.literal("clipboard").executes(ctx -> {
                             AssistClient.get().signMode("clipboard", null);
                             return 1;
+                        })))
+                        .then(ClientCommands.literal("supersign")
+                        .executes(ctx -> {
+                            AssistClient.get().supersign(null);
+                            return 1;
+                        })
+                        .then(ClientCommands.literal("enabled").executes(ctx -> {
+                            AssistClient.get().supersign(true);
+                            return 1;
+                        }))
+                        .then(ClientCommands.literal("disabled").executes(ctx -> {
+                            AssistClient.get().supersign(false);
+                            return 1;
                         }))))
                 .then(ClientCommands.literal("reminders")
                         .then(ClientCommands.literal("off").executes(ctx -> {

@@ -659,9 +659,10 @@ public final class SettingsScreen extends Screen {
         cfg.highlightFill = Look.DEFAULT.fill();
         cfg.highlightWidth = Look.DEFAULT.width();
         cfg.highlightPulse = Look.DEFAULT.pulse().name();
-        boolean hadTab = cfg.tabFill, hadSign = cfg.autosign;
+        boolean hadTab = cfg.tabFill, hadSign = cfg.autosign || cfg.supersign;
         cfg.tabFill = false;
         cfg.signMode("off");
+        cfg.supersign = false;
         cfg.save();
         AssistClient assist = AssistClient.get();
         if (assist != null && hadTab) assist.helperChanged("tab_fill", false);

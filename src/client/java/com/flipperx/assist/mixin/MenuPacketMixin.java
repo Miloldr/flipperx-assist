@@ -37,12 +37,14 @@ public abstract class MenuPacketMixin {
     @Inject(method = "handleOpenSignEditor", at = @At(value = "INVOKE", target = OPEN_TEXT_EDIT))
     private void bzassist$vanillaSign(ClientboundOpenSignEditorPacket packet, CallbackInfo ci) {
         SkyblockerSearch.suspend();
+        AssistClient.signOpening();
     }
 
     @Inject(method = "handleOpenSignEditor",
             at = @At(value = "INVOKE", target = OPEN_TEXT_EDIT, shift = At.Shift.AFTER))
     private void bzassist$vanillaSignDone(ClientboundOpenSignEditorPacket packet, CallbackInfo ci) {
         SkyblockerSearch.resume();
+        AssistClient.signOpened();
     }
 
     @Inject(method = "handleOpenSignEditor", at = @At("RETURN"))

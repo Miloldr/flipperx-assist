@@ -26,6 +26,7 @@ public final class ModConfig {
     public boolean autocommand = false;
     public boolean autosign = false;
     public String signHelper;
+    public boolean supersign = false;
     public boolean tabFill = false;
     public int tabFills = 0;
     public boolean npcRoute = false;

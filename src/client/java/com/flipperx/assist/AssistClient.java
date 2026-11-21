@@ -694,7 +694,7 @@ public class AssistClient implements ClientModInitializer {
         }
         config.signMode(mode);
         config.save();
-        helperChanged("autosign", config.autosign);
+        helperChanged("autosign", signHelperOn());
         if (back == null) chat(signLine(mode));
     }
 
@@ -706,6 +706,42 @@ public class AssistClient implements ClientModInitializer {
                     + "it gets copied, so paste it with Ctrl+V (Cmd+V on a Mac) and close the sign.";
             default -> "Prefill signs is off.";
         };
+    }
+
+    public void supersign(Boolean on) {
+        if (on == null) {
+            chat(superSignLine(config.supersign));
+            return;
+        }
+        if (!on) {
+            if (config.supersign) {
+                config.supersign = false;
+                config.save();
+                helperChanged("autosign", signHelperOn());
+            }
+            chat(superSignLine(false));
+            return;
+        }
+        if (!allowed("autosign")) {
+            refuseHelper("autosign");
+            return;
+        }
+        if (config.supersign) {
+            chat(superSignLine(true));
+            return;
+        }
+        pendingConfirm = confirmTurnOn("Supersign",
+                "Signs Assist asks for get filled in and closed for you, before they show on screen.",
+                superSignLine(true), () -> config.supersign = true, "autosign", null);
+    }
+
+    private static String superSignLine(boolean on) {
+        return on ? "Supersign is on. Amounts and searches Assist asks for are entered and the sign is closed "
+                + "before it shows." : "Supersign is off.";
+    }
+
+    public boolean signHelperOn() {
+        return config.autosign || config.supersign;
     }
 
     public void tabFill(boolean on) {
@@ -724,7 +760,7 @@ public class AssistClient implements ClientModInitializer {
         o.addProperty("type", "helper");
         o.addProperty("helper", helper);
         o.addProperty("on", on);
-        if ("autosign".equals(helper)) o.addProperty("mode", config.signMode());
+        if ("autosign".equals(helper)) o.addProperty("mode", config.supersign ? "supersign" : config.signMode());
         socket.send(o);
     }
 
@@ -777,6 +813,10 @@ public class AssistClient implements ClientModInitializer {
         return config.autosign && allowed("autosign");
     }
 
+    private boolean superSignOn() {
+        return config.supersign && allowed("autosign");
+    }
+
     public boolean tabFillOn() {
         return config.tabFill && allowed("tab_fill");
     }
@@ -789,7 +829,7 @@ public class AssistClient implements ClientModInitializer {
             String helper = e.getKey();
             helpers.put(helper, e.getValue().getAsJsonObject());
             boolean chosen = switch (helper) {
-                case "autosign" -> config.autosign;
+                case "autosign" -> signHelperOn();
                 case "autocommand" -> config.autocommand;
                 case "tab_fill" -> config.tabFill;
                 default -> false;
@@ -841,8 +881,26 @@ public class AssistClient implements ClientModInitializer {
         return lastMenuTitle;
     }
 
+    public static void signOpening() {
+        AssistClient client = instance;
+        if (client == null || !client.superSignOn()) return;
+        Screen screen = GameUtil.currentScreen();
+        if (GameUtil.handler() != null && !(screen instanceof AbstractSignEditScreen)) {
+            client.lastMenuTitle = GameUtil.screenTitle().toLowerCase(Locale.ROOT);
+        }
+    }
+
+    public static void signOpened() {
+        AssistClient client = instance;
+        if (client == null || !client.superSignOn() || !Location.skyBlock()) return;
+        if (!(GameUtil.currentScreen() instanceof AbstractSignEditScreen)) return;
+        client.maybePrefetch();
+        client.fillSign();
+    }
+
     private void fillSign() {
-        if (!autosignOn() || !STATE.running() || !STATE.current()) return;
+        boolean close = superSignOn();
+        if (!(close || autosignOn()) || !STATE.running() || !STATE.current()) return;
         if (!(GameUtil.currentScreen() instanceof AbstractSignEditScreen screen)) return;
         AssistState.Step step = STATE.step();
         String text = step.text();
@@ -850,7 +908,7 @@ public class AssistClient implements ClientModInitializer {
         int context = screenContext();
         if (context == filledSign || context != acceptedContext) return;
         filledSign = context;
-        if ("clipboard".equals(config.signMode())) {
+        if (!close && "clipboard".equals(config.signMode())) {
             Minecraft.getInstance().keyboardHandler.setClipboard(text);
             return;
         }
@@ -862,6 +920,7 @@ public class AssistClient implements ClientModInitializer {
         if (field == null) return;
         field.selectAll();
         field.insertText(text);
+        if (close) screen.onClose();
     }
 
     public void loginReminders(boolean on) {
@@ -1029,6 +1088,7 @@ public class AssistClient implements ClientModInitializer {
         STATE.receiveStep(incoming, false);
         acceptedContext = answered;
         acceptedSlotName = name;
+        if (Location.skyBlock()) fillSign();
     }
 
     private void notePrefetch(JsonObject msg, int from, boolean replace) {
@@ -1288,6 +1348,7 @@ public class AssistClient implements ClientModInitializer {
                 acceptedContext = reportedContext;
                 acceptedSlotName = targetName;
                 if (!pending) notePrefetch(msg, reportedContext, !"wait".equals(incoming.kind()));
+                if (!pending && Location.skyBlock()) fillSign();
                 if (msg.has("notice") && !msg.get("notice").isJsonNull()) {
                     STATE.notice(msg.get("notice").getAsString(), 5000);
                 }
@@ -1346,11 +1407,11 @@ public class AssistClient implements ClientModInitializer {
         o.addProperty("npc_route", config.npcRoute);
         o.addProperty("notify", config.comebackReminders);
         JsonObject on = new JsonObject();
-        on.addProperty("autosign", config.autosign);
+        on.addProperty("autosign", signHelperOn());
         on.addProperty("tab_fill", config.tabFill);
         on.addProperty("autocommand", config.autocommand);
         o.add("helpers_on", on);
-        o.addProperty("sign_mode", config.signMode());
+        o.addProperty("sign_mode", config.supersign ? "supersign" : config.signMode());
         JsonObject keys = new JsonObject();
         if (startKey != null && !startKey.isUnbound()) keys.addProperty("start", startKey.getTranslatedKeyMessage().getString());
         if (stopKey != null && !stopKey.isUnbound()) keys.addProperty("stop", stopKey.getTranslatedKeyMessage().getString());

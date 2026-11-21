@@ -80,6 +80,7 @@ public final class PassiveScreen extends Screen {
         int h = PAD * 2;
         h += LINE + 3;
         h += 8 * BIG + 6;
+        h += s.lines().height(LINE);
         h += LINE + 8;
         h += CHART_H + 4 + LINE + 6;
         if (s.best() != null) h += 16 + 6;
@@ -125,6 +126,8 @@ public final class PassiveScreen extends Screen {
             if (wx + f.width(s.work()) <= right) word(g, f, s.work(), wx, y + 7 * BIG - 7, AssistHud.DIM);
         }
         y += 8 * BIG + 6;
+
+        y = s.lines().draw(left, y, LINE, (text, x, yy, rgb) -> word(g, f, text, x, yy, rgb));
 
         int cx = word(g, f, AssistHud.plus(s.since()), left, y, AssistHud.AMBER) + 5;
         cx = word(g, f, s.sinceLabel(), cx, y, AssistHud.DIM);

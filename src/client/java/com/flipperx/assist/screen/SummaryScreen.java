@@ -152,6 +152,7 @@ public final class SummaryScreen extends Screen {
         cx = word(g, f, String.valueOf(s.sales()), cx, y, AssistHud.TEXT);
         word(g, f, s.sales() == 1 ? " sale" : " sales", cx, y, AssistHud.DIM);
         y += LINE + 8;
+        y = s.lines().draw(left, y, LINE, (text, x, yy, rgb) -> word(g, f, text, x, yy, rgb));
 
         chart(g, f, left, y, right, t, mouseX, mouseY);
         y += chartH + 8;
@@ -363,6 +364,7 @@ public final class SummaryScreen extends Screen {
         h += LINE + 3;
         h += 8 * BIG + 5;
         h += LINE + 8;
+        h += s.lines().height(LINE);
         h += chartH + 8;
         if (s.best() != null) h += 16 + 6;
         if (s.goal() != null) h += LINE + 3 + 8;

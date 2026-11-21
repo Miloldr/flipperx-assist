@@ -107,6 +107,19 @@ public final class AssistCommand {
                                             .toLowerCase(Locale.ROOT));
                                     return 1;
                                 })))
+                .then(ClientCommands.literal("forge")
+                        .executes(ctx -> {
+                            AssistClient.get().passive("forge");
+                            return 1;
+                        })
+                        .then(ClientCommands.literal("on").executes(ctx -> {
+                            AssistClient.get().passive("forge_on");
+                            return 1;
+                        }))
+                        .then(ClientCommands.literal("off").executes(ctx -> {
+                            AssistClient.get().passive("forge_off");
+                            return 1;
+                        })))
                 .then(ClientCommands.literal("notify")
                         .then(ClientCommands.literal("off").executes(ctx -> {
                             AssistClient.get().comebackReminders(false, false);

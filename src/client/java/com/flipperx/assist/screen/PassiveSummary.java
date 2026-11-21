@@ -8,7 +8,7 @@ import com.google.gson.JsonObject;
 public record PassiveSummary(String title, String span, double total, double since, String sinceLabel,
                              long[] times, double[] profits, Summary.Best best, String bestLabel,
                              String notifyLabel, String notifyCommand, Flex.Offer flex, String took,
-                             Summary.Goal goal, String work) {
+                             Summary.Goal goal, String work, Lines lines) {
 
     public static PassiveSummary from(JsonObject o) {
         JsonArray pts = o.has("points") && o.get("points").isJsonArray() ? o.getAsJsonArray("points") : new JsonArray();
@@ -40,7 +40,8 @@ public record PassiveSummary(String title, String span, double total, double sin
         return new PassiveSummary(orElse(str(o, "title"), "Passive flips"), orElse(str(o, "span"), "this week"),
                 num(o, "total"), num(o, "since"), orElse(str(o, "since_label"), "since last check in"),
                 times, profits, best, orElse(str(o, "best_label"), "Best item"), notifyLabel, notifyCommand,
-                Flex.Offer.from(o.get("flex")), str(o, "took"), goal, str(o, "work"));
+                Flex.Offer.from(o.get("flex")), str(o, "took"), goal, str(o, "work"),
+                Lines.from(o.get("lines")));
     }
 
     private static String orElse(String v, String fallback) {

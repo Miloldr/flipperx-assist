@@ -95,7 +95,7 @@ public final class ModConfig {
         }
     }
 
-    public static final String[] SIGN_MODES = {"off", "prefill", "clipboard"};
+    public static final String[] SIGN_MODES = {"off", "prefill", "clipboard", "supersign"};
 
     public String signMode() {
         if (!autosign) return "off";

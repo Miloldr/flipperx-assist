@@ -13,6 +13,7 @@ import com.flipperx.assist.hud.GhostText;
 import com.flipperx.assist.hud.ProfitPops;
 import com.flipperx.assist.mixin.SignEditScreenAccessor;
 import com.flipperx.assist.net.AssistSocket;
+import com.flipperx.assist.net.Tpm;
 import com.flipperx.assist.net.DiscordPresence;
 import com.flipperx.assist.net.Reports;
 import com.flipperx.assist.net.StatusCheck;
@@ -89,6 +90,7 @@ public class AssistClient implements ClientModInitializer {
 
     private ModConfig config;
     private AssistSocket socket;
+    private Tpm tpm;
 
     private KeyMapping startKey;
     private KeyMapping stopKey;
@@ -261,6 +263,7 @@ public class AssistClient implements ClientModInitializer {
         instance = this;
         config = ModConfig.get();
         socket = new AssistSocket(URI.create(ENDPOINT), STATE, Minecraft.getInstance()::execute, this::onMessage);
+        tpm = new Tpm(socket);
 
         KeyMapping.Category category = KeyMapping.Category.register(
                 Identifier.fromNamespaceAndPath("bzassist", "general"));
@@ -683,15 +686,20 @@ public class AssistClient implements ClientModInitializer {
     }
 
     public void signMode(String mode, Screen back) {
+        if ("supersign".equals(mode)) {
+            supersign(true, back);
+            return;
+        }
         if (!"off".equals(mode) && !allowed("autosign")) {
             if (back == null) refuseHelper("autosign");
             else premium("autosign");
             return;
         }
-        if (mode.equals(config.signMode())) {
+        if (!config.supersign && mode.equals(config.signMode())) {
             if (back == null) chat(signLine(mode));
             return;
         }
+        config.supersign = false;
         config.signMode(mode);
         config.save();
         helperChanged("autosign", signHelperOn());
@@ -709,8 +717,13 @@ public class AssistClient implements ClientModInitializer {
     }
 
     public void supersign(Boolean on) {
+        supersign(on, null);
+    }
+
+    private void supersign(Boolean on, Screen back) {
         if (on == null) {
-            chat(superSignLine(config.supersign));
+            if (config.supersign && !allowed("autosign")) refuseHelper("autosign");
+            else chat(superSignLine(config.supersign));
             return;
         }
         if (!on) {
@@ -723,21 +736,23 @@ public class AssistClient implements ClientModInitializer {
             return;
         }
         if (!allowed("autosign")) {
-            refuseHelper("autosign");
+            if (back == null) refuseHelper("autosign");
+            else premium("autosign");
             return;
         }
         if (config.supersign) {
             chat(superSignLine(true));
             return;
         }
-        pendingConfirm = confirmTurnOn("Supersign",
-                "Signs Assist asks for get filled in and closed for you, before they show on screen.",
-                superSignLine(true), () -> config.supersign = true, "autosign", null);
+        ConfirmScreen confirm = confirmTurnOn("Supersign",
+                "Assist will fill in and submit the signs it asks you to open.",
+                superSignLine(true), () -> config.supersign = true, "autosign", back);
+        if (back == null) pendingConfirm = confirm;
+        else Compat.setScreen(confirm);
     }
 
     private static String superSignLine(boolean on) {
-        return on ? "Supersign is on. Amounts and searches Assist asks for are entered and the sign is closed "
-                + "before it shows." : "Supersign is off.";
+        return on ? "Supersign is on. Assist fills in and submits its signs." : "Supersign is off.";
     }
 
     public boolean signHelperOn() {
@@ -904,7 +919,8 @@ public class AssistClient implements ClientModInitializer {
         if (!(GameUtil.currentScreen() instanceof AbstractSignEditScreen screen)) return;
         AssistState.Step step = STATE.step();
         String text = step.text();
-        if (!step.isSign() || text.isEmpty() || !step.signOf().opensFrom(lastMenuTitle)) return;
+        if (!step.isSign() || text.isEmpty() || !step.signOf().opensFrom(lastMenuTitle)
+                || (close && step.signOf().what().isEmpty())) return;
         int context = screenContext();
         if (context == filledSign || context != acceptedContext) return;
         filledSign = context;
@@ -920,7 +936,10 @@ public class AssistClient implements ClientModInitializer {
         if (field == null) return;
         field.selectAll();
         field.insertText(text);
-        if (close) screen.onClose();
+        if (close && text.equals(lines[0])) {
+            maybeReport();
+            screen.onClose();
+        }
     }
 
     public void loginReminders(boolean on) {
@@ -1272,6 +1291,7 @@ public class AssistClient implements ClientModInitializer {
                 authUuid = currentUuid();
                 if (msg.has("deflate") && msg.get("deflate").getAsBoolean()) socket.deflate();
                 reports.numbered(msg.has("seq") && msg.get("seq").getAsBoolean());
+                if (msg.has("tpm") && msg.get("tpm").getAsBoolean()) tpm.onAuthOk();
                 if (msg.has("idle_tick_ms")) tickEveryMs = Math.max(250, Math.min(10_000, msg.get("idle_tick_ms").getAsLong()));
                 boolean running = msg.has("running") && msg.get("running").getAsBoolean();
                 boolean resume = STATE.takeResume();
@@ -1292,6 +1312,7 @@ public class AssistClient implements ClientModInitializer {
                 }
                 justLinked = false;
             }
+            case "tpm_challenge" -> tpm.onChallenge(msg);
             case "auth_err" -> {
                 authSent = false;
                 STATE.disconnected();
@@ -1300,7 +1321,7 @@ public class AssistClient implements ClientModInitializer {
                 if (reason.contains("token")) config.clearToken(currentUuid());
                 authBlocked = true;
                 socket.close();
-                STATE.status(reason + ". Run /flipperx login to reconnect.");
+                STATE.status(reason + (reason.contains("banned") ? "." : ". Run /flipperx login to reconnect."));
                 chat("§c" + STATE.status());
             }
             case "step" -> {
@@ -1789,7 +1810,8 @@ public class AssistClient implements ClientModInitializer {
         chat("§e/flipperx help §7how Assist works");
         chat("§e/flipperx login §7link this account   §e/flipperx start §7or §e" + keyName(startKey) + " §7begin");
         chat("§e/flipperx hud reset §7restore the panel position");
-        chat("§e/flipperx settings §7slot highlight, Tab fill and prefill signs");
+        chat("§e/flipperx settings §7slot highlight, Tab fill and sign helpers");
+        chat("§e/flipperx config supersign enabled §7fill and submit signs Assist asks for");
         chat("§e/flipperx goal 1b Hyperion §7save toward something   §e/flipperx goal clear §7drop it");
         chat("§e/flipperx finish 45min §7or §e25m §7sell everything off by then   §e/flipperx finish §7now");
         chat("§e/flipperx summary §7the last session and passive summary again");

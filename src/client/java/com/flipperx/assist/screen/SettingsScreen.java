@@ -526,7 +526,7 @@ public final class SettingsScreen extends Screen {
     }
 
     private void signRow(GuiGraphicsExtractor g, Font f, int right, int left, int y, int mouseX, int mouseY) {
-        label(g, f, "Prefill signs", left, y);
+        label(g, f, "Sign helper", left, y);
         AssistClient assist = AssistClient.get();
         if (assist != null && !assist.allowed("autosign")) {
             String unavailable = assist.helperText("autosign", "label");
@@ -534,20 +534,17 @@ public final class SettingsScreen extends Screen {
                     step -> assist.premium("autosign"));
             return;
         }
-        String mode = cfg.signMode();
+        String mode = cfg.supersign ? "supersign" : cfg.signMode();
         int at = Arrays.asList(ModConfig.SIGN_MODES).indexOf(mode);
         String shown = switch (mode) {
-            case "prefill" -> "On";
+            case "prefill" -> "Prefill";
+            case "supersign" -> "Supersign";
             case "clipboard" -> "Clipboard";
             default -> "Off";
         };
         value(g, f, shown, right, y, mouseX, mouseY, step -> {
             String next = ModConfig.SIGN_MODES[Math.floorMod(at + step, ModConfig.SIGN_MODES.length)];
             if (assist != null) assist.signMode(next, this);
-            else {
-                cfg.signMode(next);
-                cfg.save();
-            }
         });
     }
 

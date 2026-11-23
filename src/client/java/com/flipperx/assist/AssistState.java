@@ -23,9 +23,9 @@ public final class AssistState {
 
     public record Step(String kind, String text, int slot, String click,
                        String label, String hint, String itemId, String itemName, String icon,
-                       ItemIcon.Look look, SignOf signOf) {
+                       ItemIcon.Look look, SignOf signOf, long keepMs) {
         public static final Step NONE =
-                new Step("wait", "", -1, "left", "", "", null, null, null, null, SignOf.NONE);
+                new Step("wait", "", -1, "left", "", "", null, null, null, null, SignOf.NONE, 0);
 
         public static Step from(JsonObject o) {
             return new Step(
@@ -39,7 +39,9 @@ public final class AssistState {
                     str(o, "item_name", null),
                     str(o, "icon", null),
                     ItemIcon.Look.from(o.get("look")),
-                    SignOf.from(o.get("sign_of")));
+                    SignOf.from(o.get("sign_of")),
+                    o.has("keep_ms") && !o.get("keep_ms").isJsonNull()
+                            ? Math.max(0, Math.min(3_000, o.get("keep_ms").getAsLong())) : 0);
         }
 
         static String str(JsonObject o, String key, String fallback) {
@@ -58,7 +60,7 @@ public final class AssistState {
             boolean same = current != null && itemId != null && itemId.equals(current.itemId);
             return new Step(kind, text, atSlot, click, label, hint, itemId,
                     same ? current.itemName : itemName, same ? current.icon : icon,
-                    same ? current.look : look, signOf);
+                    same ? current.look : look, signOf, keepMs);
         }
 
         public boolean reads(Step other) {

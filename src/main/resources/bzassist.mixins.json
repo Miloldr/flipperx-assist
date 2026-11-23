@@ -16,6 +16,7 @@
     "ContainerScreenMouseMixin",
     "AbstractContainerScreenAccessor",
     "SignEditScreenMixin",
+    "CoveredSignMixin",
     "PlayerListHudAccessor",
     "EditBoxAccessor",
     "SignEditScreenAccessor",

@@ -20,7 +20,7 @@ import com.flipperx.assist.net.StatusCheck;
 import com.flipperx.assist.net.VersionCheck;
 import com.flipperx.assist.screen.Flex;
 import com.flipperx.assist.screen.SettingsScreen;
-import com.flipperx.assist.screen.SignWait;
+import com.flipperx.assist.screen.HeldMenu;
 import com.flipperx.assist.screen.Summary;
 import com.flipperx.assist.screen.PassiveScreen;
 import com.flipperx.assist.screen.PassiveSummary;
@@ -37,6 +37,7 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
+import net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents;
 import net.fabricmc.fabric.api.event.Event;
 
 import net.minecraft.ChatFormatting;
@@ -145,7 +146,17 @@ public class AssistClient implements ClientModInitializer {
     private long recheckAt;
     private String lastMenuTitle = "";
     private AbstractContainerScreen<?> signMenu;
-    private SignWait keptMenu;
+    private HeldMenu keptMenu;
+    private Screen coveredSign;
+    private long coverUntil;
+    private static final long COVER_MS = 1_500;
+    private static final long CLICK_ANSWER_MS = 3_000;
+    private AbstractContainerScreen<?> clickedMenu;
+    private long clickedAt;
+    private long clickedKeepMs;
+    private boolean clickedOnStep;
+    private int lastClickSlot = -1;
+    private long signMenuClosedAt;
     private JsonObject clickToReport;
     private String lastClickedName = "";
     private Prefetch prefetch;
@@ -224,8 +235,10 @@ public class AssistClient implements ClientModInitializer {
         if (STATE.running() && STATE.current() && step.isClick() && step.slot() == slot.index) {
             client.clickedSlot = slot.index;
             client.clickedHash = client.screenHash();
+            client.noteClick(slot.index, true, step.keepMs());
         } else {
             client.clickedSlot = -1;
+            client.noteClick(slot.index, false, 0);
         }
         JsonObject o = new JsonObject();
         o.addProperty("slot", slot.index);
@@ -322,6 +335,9 @@ public class AssistClient implements ClientModInitializer {
             long now = System.currentTimeMillis();
             if (wasInWorld) leftWorldAt = now;
             wasInWorld = false;
+            signMenu = null;
+            clickedMenu = null;
+            coveredSign = null;
             if (leftWorldAt > 0 && now - leftWorldAt > WORLD_GONE_MS) {
                 socket.close();
                 STATE.reset();
@@ -901,30 +917,57 @@ public class AssistClient implements ClientModInitializer {
 
     public static void signOpening() {
         AssistClient client = instance;
-        if (client == null || !client.superSignOn()) return;
+        if (client == null) return;
+        client.coveredSign = null;
         Screen screen = GameUtil.shownScreen();
         if (GameUtil.handler() != null) {
             client.lastMenuTitle = GameUtil.screenTitle().toLowerCase(Locale.ROOT);
         }
-        client.signMenu = screen instanceof AbstractContainerScreen<?> menu ? menu : null;
+        client.signMenu = screen instanceof AbstractContainerScreen<?> menu ? menu
+                : screen == null && client.clickedLately(client.clickedMenu) ? client.clickedMenu : null;
+        client.signMenuClosedAt = Compat.screen() instanceof HeldMenu held ? held.closedAt()
+                : screen == null ? System.currentTimeMillis() : 0;
     }
 
     public static void menuClosing() {
         AssistClient client = instance;
         if (client == null) return;
-        if (Compat.screen() instanceof SignWait wait) {
-            client.keptMenu = wait;
+        if (Compat.screen() instanceof HeldMenu held) {
+            held.closed();
+            client.keptMenu = held;
             return;
         }
-        if (!client.superSignOn() || !Location.skyBlock() || !STATE.running()) return;
+        if (!Location.skyBlock() || !STATE.running()) return;
         if (!(GameUtil.currentScreen() instanceof AbstractContainerScreen<?> menu)) return;
-        Prefetch p = client.prefetch;
-        if (p == null || !"sign".equals(p.target().on()) || client.clickedSlot < 0
-                || System.currentTimeMillis() > p.until()) return;
-        String title = GameUtil.screenTitle().toLowerCase(Locale.ROOT);
-        if (!titleMatches(p.target(), title)) return;
-        client.lastMenuTitle = title;
-        client.keptMenu = new SignWait(menu);
+        long keep = client.keepFor(menu);
+        if (keep <= 0) return;
+        client.lastMenuTitle = GameUtil.screenTitle().toLowerCase(Locale.ROOT);
+        client.keptMenu = new HeldMenu(menu, keep, System.currentTimeMillis());
+    }
+
+    private void noteClick(int slot, boolean onStep, long keepMs) {
+        AbstractContainerScreen<?> menu = GameUtil.currentScreen() instanceof AbstractContainerScreen<?> m ? m : null;
+        boolean again = !onStep && slot == lastClickSlot && clickedLately(menu);
+        if (!again) {
+            clickedOnStep = onStep;
+            clickedKeepMs = keepMs;
+        }
+        lastClickSlot = slot;
+        clickedMenu = menu;
+        clickedAt = System.currentTimeMillis();
+    }
+
+    private boolean clickedLately(AbstractContainerScreen<?> menu) {
+        return menu != null && menu == clickedMenu && System.currentTimeMillis() - clickedAt < CLICK_ANSWER_MS;
+    }
+
+    private long keepFor(AbstractContainerScreen<?> menu) {
+        if (!clickedLately(menu)) return 0;
+        Prefetch p = prefetch;
+        boolean sign = clickedOnStep && superSignOn() && p != null && "sign".equals(p.target().on())
+                && System.currentTimeMillis() <= p.until()
+                && titleMatches(p.target(), GameUtil.screenTitle().toLowerCase(Locale.ROOT));
+        return sign ? HeldMenu.SIGN_MS : clickedKeepMs;
     }
 
     public static void menuClosed() {
@@ -933,10 +976,42 @@ public class AssistClient implements ClientModInitializer {
 
     public static Screen screenFor(Screen screen) {
         AssistClient client = instance;
-        if (screen != null || client == null || client.keptMenu == null) return screen;
-        SignWait kept = client.keptMenu;
+        if (screen != null || client == null) return screen;
+        HeldMenu kept = client.keptMenu;
         client.keptMenu = null;
-        return kept;
+        return kept != null ? kept : client.afterSign();
+    }
+
+    private Screen afterSign() {
+        AbstractContainerScreen<?> menu = signMenu;
+        if (menu == null || !(Compat.screen() instanceof AbstractSignEditScreen sign)) return null;
+        signMenu = null;
+        Minecraft mc = Minecraft.getInstance();
+        AssistState.Step step = STATE.step();
+        if (mc.player == null || !Location.skyBlock() || !STATE.running() || !STATE.current()
+                || !step.isSign() || step.text().isEmpty() || step.signOf().what().isEmpty()
+                || !step.signOf().opensFrom(lastMenuTitle)) return null;
+        String[] lines = ((SignEditScreenAccessor) sign).bzassist$getMessages();
+        if (lines == null || lines.length == 0 || lines[0] == null) return null;
+        return step.text().equalsIgnoreCase(lines[0].trim()) ? new HeldMenu(menu, HeldMenu.SIGN_MS, signMenuClosedAt) : null;
+    }
+
+    public static Screen covering(Screen screen) {
+        AssistClient client = instance;
+        if (client == null || screen == null || client.coveredSign != screen) return null;
+        if (client.signMenu == null || System.currentTimeMillis() > client.coverUntil) {
+            client.coveredSign = null;
+            return null;
+        }
+        return client.signMenu;
+    }
+
+    public static long coverClosedAt() {
+        return instance == null ? 0 : instance.signMenuClosedAt;
+    }
+
+    public static void uncover() {
+        if (instance != null) instance.coveredSign = null;
     }
 
     public static void signOpened() {
@@ -945,6 +1020,11 @@ public class AssistClient implements ClientModInitializer {
         if (!(GameUtil.currentScreen() instanceof AbstractSignEditScreen)) return;
         client.maybePrefetch();
         client.fillSign();
+        if (!STATE.running() || !client.clickedLately(client.signMenu)
+                || !(GameUtil.currentScreen() instanceof AbstractSignEditScreen sign)) return;
+        client.coveredSign = sign;
+        client.coverUntil = System.currentTimeMillis() + COVER_MS;
+        ScreenMouseEvents.allowMouseClick(sign).register((screen, event) -> covering(screen) == null);
     }
 
     private void fillSign() {
@@ -972,8 +1052,9 @@ public class AssistClient implements ClientModInitializer {
         field.insertText(text);
         if (close && text.equals(lines[0])) {
             maybeReport();
-            Compat.setScreen(new SignWait(signMenu));
+            AbstractContainerScreen<?> menu = signMenu;
             signMenu = null;
+            Compat.setScreen(new HeldMenu(menu, HeldMenu.SIGN_MS, signMenuClosedAt));
         }
     }
 
@@ -1405,6 +1486,7 @@ public class AssistClient implements ClientModInitializer {
                 acceptedSlotName = targetName;
                 if (!pending) notePrefetch(msg, reportedContext, !"wait".equals(incoming.kind()));
                 if (!pending && Location.skyBlock()) fillSign();
+                if (!pending && incoming.isPlayers()) uncover();
                 if (msg.has("notice") && !msg.get("notice").isJsonNull()) {
                     STATE.notice(msg.get("notice").getAsString(), 5000);
                 }

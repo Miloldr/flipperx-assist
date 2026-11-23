@@ -1,6 +1,7 @@
 package com.flipperx.assist.game;
 
-import com.flipperx.assist.screen.SignWait;
+import com.flipperx.assist.AssistClient;
+import com.flipperx.assist.screen.HeldMenu;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -52,12 +53,14 @@ public final class GameUtil {
 
     public static Screen currentScreen() {
         Screen s = Compat.screen();
-        return s instanceof SignWait ? null : s;
+        return s instanceof HeldMenu ? null : s;
     }
 
     public static Screen shownScreen() {
         Screen s = Compat.screen();
-        return s instanceof SignWait wait ? wait.menu() : s;
+        if (s instanceof HeldMenu held) return held.menu();
+        Screen covering = AssistClient.covering(s);
+        return covering == null ? s : covering;
     }
 
     public static AbstractContainerMenu handler() {

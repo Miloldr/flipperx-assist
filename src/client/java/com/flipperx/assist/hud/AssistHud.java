@@ -46,6 +46,7 @@ public final class AssistHud {
     private static final int LIGHT = mix(TRACK, AMBER, 0.42f);
 
     private static final float FADE_MS = 180f;
+    private static final float FADE_FROM = 0.4f;
     private static final float NOTICE_FADE_MS = 400f;
     private static final float MOVE_TAU_MS = 70f;
     private static final float DIM_TAU_MS = 120f;
@@ -110,14 +111,10 @@ public final class AssistHud {
         boolean iconSpace = running && step.itemId() != null;
 
         float age = now - state.stepSince();
-        float fade = running ? ease(Math.min(1f, age / FADE_MS)) : 1f;
+        boolean fresh = running && state.previous() != Step.NONE && !headline(state.previous()).equals(title);
+        float fade = fresh ? ease(Math.min(1f, age / FADE_MS)) : 1f;
         List<Line> titles = new ArrayList<>();
         addLines(titles, title, inner - (iconSpace ? 20 : 0), running ? titleColor(step, cfg) : AMBER);
-        List<Line> oldTitles = new ArrayList<>();
-        if (running && fade < 1f && state.previous() != Step.NONE) {
-            addLines(oldTitles, headline(state.previous()), inner - (iconSpace ? 20 : 0),
-                    titleColor(state.previous(), cfg));
-        }
 
         List<Line> lines = new ArrayList<>();
         addLines(lines, detail, inner, TEXT);
@@ -195,13 +192,8 @@ public final class AssistHud {
         int textX = x + PAD + (iconSpace ? 20 : 0);
         int cursor = y + PAD;
         int slide = Math.round((1f - fade) * 4f);
-        for (Line line : oldTitles) {
-            g.text(mc.font, line.text(), textX, cursor - (4 - slide), argb(line.color(), (1f - fade) * dim), false);
-            cursor += LINE;
-        }
-        cursor = y + PAD;
         for (Line line : titles) {
-            g.text(mc.font, line.text(), textX, cursor + slide, argb(line.color(), fade * dim), false);
+            g.text(mc.font, line.text(), textX, cursor + slide, argb(line.color(), (FADE_FROM + (1f - FADE_FROM) * fade) * dim), false);
             cursor += LINE;
         }
         cursor = y + PAD + titleHeight;

@@ -9,12 +9,16 @@ import com.flipperx.assist.hud.GhostText;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractSignEditScreen;
+import net.minecraft.client.input.CharacterEvent;
+import net.minecraft.client.input.KeyEvent;
 
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.Locale;
 
@@ -77,6 +81,16 @@ public abstract class SignEditScreenMixin {
         int x = cx - total / 2;
         graphics.text(mc.font, typed, x, y, WHITE, true);
         graphics.text(mc.font, left, x + mc.font.width(typed), y, GREY, true);
+    }
+
+    @Inject(method = "keyPressed", at = @At("HEAD"), cancellable = true)
+    private void bzassist$coveredKey(KeyEvent event, CallbackInfoReturnable<Boolean> cir) {
+        if (AssistClient.covering((Screen) (Object) this) != null) cir.setReturnValue(true);
+    }
+
+    @Inject(method = "charTyped", at = @At("HEAD"), cancellable = true)
+    private void bzassist$coveredChar(CharacterEvent event, CallbackInfoReturnable<Boolean> cir) {
+        if (AssistClient.covering((Screen) (Object) this) != null) cir.setReturnValue(true);
     }
 
     private static void drawCentered(GuiGraphicsExtractor g, String text, int cx, int y, int color) {

@@ -20,6 +20,7 @@ import com.flipperx.assist.net.StatusCheck;
 import com.flipperx.assist.net.VersionCheck;
 import com.flipperx.assist.screen.Flex;
 import com.flipperx.assist.screen.SettingsScreen;
+import com.flipperx.assist.screen.SignWait;
 import com.flipperx.assist.screen.Summary;
 import com.flipperx.assist.screen.PassiveScreen;
 import com.flipperx.assist.screen.PassiveSummary;
@@ -143,6 +144,8 @@ public class AssistClient implements ClientModInitializer {
     private long shapeSince;
     private long recheckAt;
     private String lastMenuTitle = "";
+    private AbstractContainerScreen<?> signMenu;
+    private SignWait keptMenu;
     private JsonObject clickToReport;
     private String lastClickedName = "";
     private Prefetch prefetch;
@@ -282,7 +285,7 @@ public class AssistClient implements ClientModInitializer {
 
         HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("bzassist", "panel"),
                 (graphics, tickCounter) -> {
-                    Screen open = GameUtil.currentScreen();
+                    Screen open = GameUtil.shownScreen();
                     if (open instanceof AbstractContainerScreen || open instanceof AbstractSignEditScreen) {
                         return;
                     }
@@ -899,10 +902,41 @@ public class AssistClient implements ClientModInitializer {
     public static void signOpening() {
         AssistClient client = instance;
         if (client == null || !client.superSignOn()) return;
-        Screen screen = GameUtil.currentScreen();
-        if (GameUtil.handler() != null && !(screen instanceof AbstractSignEditScreen)) {
+        Screen screen = GameUtil.shownScreen();
+        if (GameUtil.handler() != null) {
             client.lastMenuTitle = GameUtil.screenTitle().toLowerCase(Locale.ROOT);
         }
+        client.signMenu = screen instanceof AbstractContainerScreen<?> menu ? menu : null;
+    }
+
+    public static void menuClosing() {
+        AssistClient client = instance;
+        if (client == null) return;
+        if (Compat.screen() instanceof SignWait wait) {
+            client.keptMenu = wait;
+            return;
+        }
+        if (!client.superSignOn() || !Location.skyBlock() || !STATE.running()) return;
+        if (!(GameUtil.currentScreen() instanceof AbstractContainerScreen<?> menu)) return;
+        Prefetch p = client.prefetch;
+        if (p == null || !"sign".equals(p.target().on()) || client.clickedSlot < 0
+                || System.currentTimeMillis() > p.until()) return;
+        String title = GameUtil.screenTitle().toLowerCase(Locale.ROOT);
+        if (!titleMatches(p.target(), title)) return;
+        client.lastMenuTitle = title;
+        client.keptMenu = new SignWait(menu);
+    }
+
+    public static void menuClosed() {
+        if (instance != null) instance.keptMenu = null;
+    }
+
+    public static Screen screenFor(Screen screen) {
+        AssistClient client = instance;
+        if (screen != null || client == null || client.keptMenu == null) return screen;
+        SignWait kept = client.keptMenu;
+        client.keptMenu = null;
+        return kept;
     }
 
     public static void signOpened() {
@@ -938,7 +972,8 @@ public class AssistClient implements ClientModInitializer {
         field.insertText(text);
         if (close && text.equals(lines[0])) {
             maybeReport();
-            screen.onClose();
+            Compat.setScreen(new SignWait(signMenu));
+            signMenu = null;
         }
     }
 

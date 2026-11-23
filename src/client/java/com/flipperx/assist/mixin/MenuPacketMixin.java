@@ -18,6 +18,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(ClientPacketListener.class)
 public abstract class MenuPacketMixin {
     private static final String OPEN_TEXT_EDIT = "Lnet/minecraft/client/player/LocalPlayer;openTextEdit";
+    private static final String CLOSE_CONTAINER =
+            "Lnet/minecraft/client/player/LocalPlayer;clientSideCloseContainer()V";
 
     @Inject(method = "handleOpenScreen", at = @At("RETURN"))
     private void bzassist$opened(ClientboundOpenScreenPacket packet, CallbackInfo ci) {
@@ -52,8 +54,14 @@ public abstract class MenuPacketMixin {
         AssistClient.menuChanged();
     }
 
+    @Inject(method = "handleContainerClose", at = @At(value = "INVOKE", target = CLOSE_CONTAINER))
+    private void bzassist$closing(ClientboundContainerClosePacket packet, CallbackInfo ci) {
+        AssistClient.menuClosing();
+    }
+
     @Inject(method = "handleContainerClose", at = @At("RETURN"))
     private void bzassist$closed(ClientboundContainerClosePacket packet, CallbackInfo ci) {
+        AssistClient.menuClosed();
         AssistClient.menuChanged();
     }
 }

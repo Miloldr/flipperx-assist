@@ -1,5 +1,7 @@
 package com.flipperx.assist.game;
 
+import com.flipperx.assist.screen.SignWait;
+
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mojang.authlib.properties.Property;
@@ -49,7 +51,13 @@ public final class GameUtil {
     }
 
     public static Screen currentScreen() {
-        return Compat.screen();
+        Screen s = Compat.screen();
+        return s instanceof SignWait ? null : s;
+    }
+
+    public static Screen shownScreen() {
+        Screen s = Compat.screen();
+        return s instanceof SignWait wait ? wait.menu() : s;
     }
 
     public static AbstractContainerMenu handler() {

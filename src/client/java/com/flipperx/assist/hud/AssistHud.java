@@ -179,7 +179,7 @@ public final class AssistHud {
 
         int x = Math.round(px), y = Math.round(py), height = Math.round(ph);
         drawnX = x; drawnY = y; drawnWidth = width; drawnHeight = height;
-        drawnScreen = GameUtil.currentScreen();
+        drawnScreen = GameUtil.shownScreen();
 
         g.fill(x, y, x + width, y + height, argb(BG, BG_ALPHA * dim));
         int border = argb(BORDER, dim);
@@ -404,7 +404,7 @@ public final class AssistHud {
 
     private static int room(GuiGraphicsExtractor g, ModConfig cfg, int full) {
         if (cfg.hudX >= 0) return full;
-        Screen screen = GameUtil.currentScreen();
+        Screen screen = GameUtil.shownScreen();
         if (screen instanceof AbstractContainerScreen<?> cs) {
             AbstractContainerScreenAccessor acc = (AbstractContainerScreenAccessor) cs;
             int left = acc.bzassist$getLeftPos();
@@ -423,7 +423,7 @@ public final class AssistHud {
         if (cfg.hudX >= 0) {
             return new int[]{Math.clamp(cfg.hudX, 0, maxX), Math.clamp(cfg.hudY, 0, maxY)};
         }
-        Screen screen = GameUtil.currentScreen();
+        Screen screen = GameUtil.shownScreen();
         if (beside && screen instanceof AbstractContainerScreen<?> cs) {
             AbstractContainerScreenAccessor acc = (AbstractContainerScreenAccessor) cs;
             int left = acc.bzassist$getLeftPos();
@@ -542,7 +542,7 @@ public final class AssistHud {
     public static boolean mouseClicked(double mouseX, double mouseY, int guiWidth) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || Compat.hudHidden() || drawnHeight == 0
-                || drawnScreen != GameUtil.currentScreen()) return false;
+                || drawnScreen != GameUtil.shownScreen()) return false;
         if (mouseX < drawnX || mouseX >= drawnX + drawnWidth
                 || mouseY < drawnY || mouseY >= drawnY + drawnHeight) return false;
         dragging = true;
@@ -553,7 +553,7 @@ public final class AssistHud {
 
     public static boolean mouseDragged(double mouseX, double mouseY) {
         if (!dragging) return false;
-        if (drawnScreen != GameUtil.currentScreen()) { mouseReleased(); return false; }
+        if (drawnScreen != GameUtil.shownScreen()) { mouseReleased(); return false; }
         ModConfig cfg = ModConfig.get();
         var window = Minecraft.getInstance().getWindow();
         cfg.hudX = Math.clamp((int) mouseX - dragDx, 0, Math.max(0, window.getGuiScaledWidth() - drawnWidth));

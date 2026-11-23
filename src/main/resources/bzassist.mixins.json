@@ -10,6 +10,7 @@
     "ContainerScreenMixin",
     "OrderMarkMixin",
     "MenuPacketMixin",
+    "SetScreenMixin",
     "SlotClickMixin",
     "ContainerKeyMixin",
     "ContainerScreenMouseMixin",

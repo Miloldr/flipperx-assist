@@ -88,6 +88,8 @@ public final class AssistState {
     public record Row(String label, String value, String right) {}
     public record Mark(int slot, String name, int background, String lore, int loreColor) {}
     private volatile java.util.List<Mark> marks = java.util.List.of();
+    public record OrdersTotal(String title, String text, int color, java.util.List<net.minecraft.network.chat.Component> lines) {}
+    private volatile OrdersTotal ordersTotal = null;
     private volatile java.util.List<Row> rows = java.util.List.of();
     private volatile String cookieWarning = null;
     private volatile String notice = null;
@@ -133,6 +135,7 @@ public final class AssistState {
         linked = false;
         running = false;
         marks = java.util.List.of();
+        ordersTotal = null;
         set(Step.NONE);
         status("Connection lost. Reconnecting...");
     }
@@ -184,6 +187,33 @@ public final class AssistState {
                     text(m, "lore"), m.has("lore_color") ? m.get("lore_color").getAsInt() : 0xFFFFFF));
         }
         marks = java.util.List.copyOf(out);
+    }
+
+    public void ordersTotal(JsonObject msg) {
+        String value = text(msg, "text");
+        if (value.isEmpty()) {
+            ordersTotal = null;
+            return;
+        }
+        java.util.List<net.minecraft.network.chat.Component> lines = new java.util.ArrayList<>();
+        if (msg.has("lines") && msg.get("lines").isJsonArray()) for (var row : msg.getAsJsonArray("lines")) {
+            if (!row.isJsonArray()) continue;
+            var line = net.minecraft.network.chat.Component.empty();
+            for (var e : row.getAsJsonArray()) {
+                if (!e.isJsonObject()) continue;
+                JsonObject part = e.getAsJsonObject();
+                line.append(net.minecraft.network.chat.Component.literal(text(part, "text"))
+                        .withColor(part.has("color") ? part.get("color").getAsInt() : 0xFFFFFF));
+            }
+            lines.add(line);
+        }
+        ordersTotal = new OrdersTotal(text(msg, "title"), value,
+                0xFF000000 | (msg.has("color") ? msg.get("color").getAsInt() : 0x404040), java.util.List.copyOf(lines));
+    }
+
+    public OrdersTotal ordersTotal(String title) {
+        OrdersTotal total = ordersTotal;
+        return linked && total != null && total.title().equals(title) ? total : null;
     }
 
     public Mark mark(int slot, String rawName) {

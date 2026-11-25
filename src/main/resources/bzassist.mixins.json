@@ -9,6 +9,7 @@
     "CommandSuggestionsMixin",
     "ContainerScreenMixin",
     "OrderMarkMixin",
+    "OrdersTotalMixin",
     "MenuPacketMixin",
     "SetScreenMixin",
     "SlotClickMixin",

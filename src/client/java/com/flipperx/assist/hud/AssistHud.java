@@ -34,6 +34,7 @@ public final class AssistHud {
     private static final int TEXT_GAP = 8;
     private static final int SIGN_HALF = 50;
     private static final int GAP = 6;
+    private static final int TOP_Y = 8;
 
     private static final int BG = 0x121212;
     private static final float BG_ALPHA = 0xD0 / 255f;
@@ -62,6 +63,7 @@ public final class AssistHud {
     private static int dragDx, dragDy;
 
     private static int drawnX, drawnY, drawnWidth, drawnHeight;
+    private static float drawnScale = 1f;
     private static Screen drawnScreen;
     private static float moneyX = Float.NaN, moneyY;
     private static float goalX = Float.NaN, goalY;
@@ -98,9 +100,22 @@ public final class AssistHud {
         }
 
         ModConfig cfg = ModConfig.get();
-        int full = Math.min(MAX_WIDTH, Math.max(80, g.guiWidth() - 8));
-        int room = room(g, cfg, full);
+        float s = 1f;
+        int full = full(g, s);
+        boolean manual = cfg.hudX >= 0 && (dragging || !coversMenu(g, cfg, full));
+        int room = room(g, manual, full, s);
         boolean beside = room >= MIN_WIDTH;
+        int guiScale = mc.getWindow().getGuiScale();
+        for (int p = guiScale - 1; !beside && !manual && p >= 1; p--) {
+            float t = p / (float) guiScale;
+            int r = room(g, manual, full(g, t), t);
+            if (r >= MIN_WIDTH) {
+                s = t;
+                full = full(g, t);
+                room = r;
+                beside = true;
+            }
+        }
         int width = beside ? room : full;
         int inner = width - PAD * 2;
         Step step = state.step();
@@ -159,14 +174,15 @@ public final class AssistHud {
                 + Math.max(0, bars - 1) * ROW_GAP + spilled * LINE;
         int targetHeight = PAD * 2 + titleHeight + lines.size() * LINE + footHeight;
 
-        int[] anchor = anchor(g, cfg, width, targetHeight, beside);
+        int[] anchor = anchor(g, cfg, manual, width, targetHeight, beside, s);
+        float ax = anchor[0] * s, ay = anchor[1] * s;
         if (Float.isNaN(px) || dragging) {
-            px = anchor[0]; py = anchor[1];
+            px = ax; py = ay;
             if (Float.isNaN(ph)) ph = targetHeight;
         } else {
             float k = approach(dt, MOVE_TAU_MS);
-            px += (anchor[0] - px) * k;
-            py += (anchor[1] - py) * k;
+            px += (ax - px) * k;
+            py += (ay - py) * k;
         }
         ph += (targetHeight - ph) * approach(dt, MOVE_TAU_MS);
         if (Math.abs(ph - targetHeight) < 0.5f) ph = targetHeight;
@@ -174,9 +190,15 @@ public final class AssistHud {
         float dimTarget = running && !state.current() && step.isPlayers() ? DIMMED : 1f;
         dim += (dimTarget - dim) * approach(dt, DIM_TAU_MS);
 
-        int x = Math.round(px), y = Math.round(py), height = Math.round(ph);
-        drawnX = x; drawnY = y; drawnWidth = width; drawnHeight = height;
+        int gx = Math.round(px), gy = Math.round(py), height = Math.round(ph);
+        drawnX = gx; drawnY = gy; drawnScale = s;
+        drawnWidth = (int) Math.ceil(width * s);
+        drawnHeight = (int) Math.ceil(height * s);
         drawnScreen = GameUtil.shownScreen();
+        g.pose().pushMatrix();
+        g.pose().translate(gx, gy);
+        g.pose().scale(s, s);
+        int x = 0, y = 0;
 
         g.fill(x, y, x + width, y + height, argb(BG, BG_ALPHA * dim));
         int border = argb(BORDER, dim);
@@ -230,6 +252,7 @@ public final class AssistHud {
             drawGoal(g, font, goal, x + PAD, x + width - PAD, cursor, dt, goalSpill);
         }
         g.disableScissor();
+        g.pose().popMatrix();
     }
 
     private static final String LIMIT_LABEL = "Daily limit";
@@ -371,11 +394,11 @@ public final class AssistHud {
     }
 
     public static float[] moneyAnchor() {
-        return Float.isNaN(moneyX) || drawnHeight == 0 ? null : new float[]{moneyX, moneyY};
+        return Float.isNaN(moneyX) || drawnHeight == 0 ? null : new float[]{drawnX + moneyX * drawnScale, drawnY + moneyY * drawnScale};
     }
 
     public static float[] goalAnchor() {
-        return Float.isNaN(goalX) || drawnHeight == 0 ? null : new float[]{goalX, goalY};
+        return Float.isNaN(goalX) || drawnHeight == 0 ? null : new float[]{drawnX + goalX * drawnScale, drawnY + goalY * drawnScale};
     }
 
     public static float[] underAnchor() {
@@ -394,43 +417,62 @@ public final class AssistHud {
         return ease(Math.max(0f, Math.min(in, out)));
     }
 
-    private static int room(GuiGraphicsExtractor g, ModConfig cfg, int full) {
-        if (cfg.hudX >= 0) return full;
+    private static int full(GuiGraphicsExtractor g, float s) {
+        return Math.min(MAX_WIDTH, Math.max(80, (int) (g.guiWidth() / s) - 8));
+    }
+
+    private static boolean coversMenu(GuiGraphicsExtractor g, ModConfig cfg, int full) {
+        if (!(GameUtil.shownScreen() instanceof AbstractContainerScreen<?> cs)) return false;
+        AbstractContainerScreenAccessor acc = (AbstractContainerScreenAccessor) cs;
+        int height = Float.isNaN(ph) ? LINE * 6 : Math.round(ph);
+        int x = Math.clamp(cfg.hudX, 0, Math.max(0, g.guiWidth() - full));
+        int y = Math.clamp(cfg.hudY, 0, Math.max(0, g.guiHeight() - height));
+        int left = acc.bzassist$getLeftPos(), top = acc.bzassist$getTopPos();
+        return x < left + acc.bzassist$getImageWidth() && x + full > left
+                && y < top + acc.bzassist$getImageHeight() && y + height > top;
+    }
+
+    private static int room(GuiGraphicsExtractor g, boolean manual, int full, float s) {
+        if (manual) return full;
+        int gw = (int) (g.guiWidth() / s);
         Screen screen = GameUtil.shownScreen();
         if (screen instanceof AbstractContainerScreen<?> cs) {
             AbstractContainerScreenAccessor acc = (AbstractContainerScreenAccessor) cs;
-            int left = acc.bzassist$getLeftPos();
-            int right = left + acc.bzassist$getImageWidth();
-            return Math.min(full, Math.max(g.guiWidth() - right - GAP - 2, left - GAP - 2));
+            int left = (int) (acc.bzassist$getLeftPos() / s);
+            int right = (int) Math.ceil((acc.bzassist$getLeftPos() + acc.bzassist$getImageWidth()) / s);
+            return Math.min(full, Math.max(gw - right - GAP - 2, left - GAP - 2));
         }
         if (screen instanceof AbstractSignEditScreen) {
-            return Math.min(full, g.guiWidth() / 2 - SIGN_HALF - GAP - 2);
+            return Math.min(full, (int) ((g.guiWidth() / 2 - SIGN_HALF) / s) - GAP - 2);
         }
         return full;
     }
 
-    private static int[] anchor(GuiGraphicsExtractor g, ModConfig cfg, int width, int height, boolean beside) {
-        int maxX = Math.max(0, g.guiWidth() - width);
-        int maxY = Math.max(0, g.guiHeight() - height);
-        if (cfg.hudX >= 0) {
-            return new int[]{Math.clamp(cfg.hudX, 0, maxX), Math.clamp(cfg.hudY, 0, maxY)};
+    private static int[] anchor(GuiGraphicsExtractor g, ModConfig cfg, boolean manual, int width, int height,
+                                boolean beside, float s) {
+        int gw = (int) (g.guiWidth() / s);
+        int maxX = Math.max(0, gw - width);
+        int maxY = Math.max(0, (int) (g.guiHeight() / s) - height);
+        int topY = Math.clamp(Math.round((manual || cfg.hudX < 0 ? cfg.hudY : TOP_Y) / s), 0, maxY);
+        if (manual) {
+            return new int[]{Math.clamp(Math.round(cfg.hudX / s), 0, maxX), topY};
         }
         Screen screen = GameUtil.shownScreen();
         if (beside && screen instanceof AbstractContainerScreen<?> cs) {
             AbstractContainerScreenAccessor acc = (AbstractContainerScreenAccessor) cs;
-            int left = acc.bzassist$getLeftPos();
-            int top = acc.bzassist$getTopPos();
-            int right = left + acc.bzassist$getImageWidth() + GAP;
-            if (right + width <= g.guiWidth()) {
+            int left = (int) (acc.bzassist$getLeftPos() / s);
+            int top = Math.round(acc.bzassist$getTopPos() / s);
+            int right = (int) Math.ceil((acc.bzassist$getLeftPos() + acc.bzassist$getImageWidth()) / s) + GAP;
+            if (right + width <= gw) {
                 return new int[]{right, Math.clamp(top, 0, maxY)};
             }
             return new int[]{Math.max(0, left - width - GAP), Math.clamp(top, 0, maxY)};
         }
         if (beside && screen instanceof AbstractSignEditScreen) {
-            int x = g.guiWidth() / 2 - SIGN_HALF - GAP - width;
-            return new int[]{Math.max(0, x), Math.clamp(cfg.hudY, 0, maxY)};
+            int x = (int) ((g.guiWidth() / 2 - SIGN_HALF) / s) - GAP - width;
+            return new int[]{Math.max(0, x), topY};
         }
-        return new int[]{(g.guiWidth() - width) / 2, Math.clamp(cfg.hudY, 0, maxY)};
+        return new int[]{(gw - width) / 2, topY};
     }
 
     public static void renderHighlight(GuiGraphicsExtractor g, Screen screen, int slotX, int slotY, boolean right) {
@@ -537,6 +579,12 @@ public final class AssistHud {
                 || drawnScreen != GameUtil.shownScreen()) return false;
         if (mouseX < drawnX || mouseX >= drawnX + drawnWidth
                 || mouseY < drawnY || mouseY >= drawnY + drawnHeight) return false;
+        if (GameUtil.shownScreen() instanceof AbstractContainerScreen<?> cs) {
+            AbstractContainerScreenAccessor acc = (AbstractContainerScreenAccessor) cs;
+            int left = acc.bzassist$getLeftPos(), top = acc.bzassist$getTopPos();
+            if (mouseX >= left && mouseX < left + acc.bzassist$getImageWidth()
+                    && mouseY >= top && mouseY < top + acc.bzassist$getImageHeight()) return false;
+        }
         dragging = true;
         dragDx = (int) mouseX - drawnX;
         dragDy = (int) mouseY - drawnY;

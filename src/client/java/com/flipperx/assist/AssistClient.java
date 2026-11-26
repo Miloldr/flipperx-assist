@@ -170,6 +170,7 @@ public class AssistClient implements ClientModInitializer {
     private static final long PREFETCH_TTL_MS = 15_000;
     private int clickedSlot = -1;
     private int clickedHash;
+    private int clickedContext;
     private long aheadSeq = -1;
 
     private record Target(AssistState.Step step, String on, String title, boolean prefix,
@@ -237,6 +238,7 @@ public class AssistClient implements ClientModInitializer {
         if (STATE.running() && STATE.current() && step.isClick() && step.slot() == slot.index) {
             client.clickedSlot = slot.index;
             client.clickedHash = client.screenHash();
+            client.clickedContext = client.screenContext();
             client.noteClick(slot.index, true, step.keepMs());
         } else {
             client.clickedSlot = -1;
@@ -1337,7 +1339,7 @@ public class AssistClient implements ClientModInitializer {
     }
 
     private boolean clickLanded() {
-        if (clickedSlot < 0) return false;
+        if (clickedSlot < 0 || clickedContext != screenContext()) return false;
         var menu = GameUtil.handler();
         if (menu == null || !menu.getCarried().isEmpty()) return false;
         return screenHash() != clickedHash;

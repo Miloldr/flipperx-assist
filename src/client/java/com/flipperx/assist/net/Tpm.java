@@ -9,6 +9,7 @@ import com.sun.jna.ptr.IntByReference;
 import com.sun.jna.ptr.PointerByReference;
 import com.sun.jna.win32.StdCallLibrary;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Locale;
 import java.util.concurrent.ScheduledExecutorService;
@@ -32,8 +33,14 @@ public final class Tpm {
         int NCryptFreeObject(Pointer object);
     }
 
+    private interface Shell32 extends StdCallLibrary {
+        boolean IsUserAnAdmin();
+    }
+
     private static final String PROVIDER = "Microsoft Platform Crypto Provider";
     private static final int IDENTITY_KEY = 0x8;
+    private static final String ACTIVATION = "PCP_TPM12_IDACTIVATION";
+    private static final int SECRET_CAP = 256;
     private static final String[] EK_PROPS = {"PCP_RSA_EKPUB", "PCP_EKPUB"};
     private static final String[] CERT_PROPS = {"PCP_RSA_EKNVCERT", "PCP_RSA_EKCERT", "PCP_EKNVCERT",
             "PCP_EKCERT", "PCP_INTERMEDIATE_CA_EKCERT"};
@@ -49,6 +56,8 @@ public final class Tpm {
     private NCrypt lib;
     private Pointer provider;
     private Pointer key;
+    private int status;
+    private int got;
 
     public Tpm(AssistSocket socket) {
         this.socket = socket;
@@ -80,17 +89,20 @@ public final class Tpm {
             send(attempt, out);
             return;
         }
+        out.addProperty("admin", admin());
         try {
             lib = Native.load("ncrypt", NCrypt.class);
             PointerByReference p = new PointerByReference();
             check(lib.NCryptOpenStorageProvider(p, new WString(PROVIDER), 0), "provider");
             provider = p.getValue();
+            String platform = text(property(provider, "PCP_PLATFORM_TYPE"));
+            if (platform != null) out.addProperty("platform", platform);
             byte[] ek = null;
             for (String name : EK_PROPS) {
                 ek = property(provider, name);
                 if (ek != null) break;
             }
-            if (ek == null) throw new IllegalStateException("no ek");
+            if (ek == null) throw new IllegalStateException("no ek " + hex(status));
             JsonObject certs = new JsonObject();
             for (String name : CERT_PROPS) {
                 byte[] c = property(provider, name);
@@ -121,7 +133,7 @@ public final class Tpm {
         setInt(key, "PCP_KEY_USAGE_POLICY", IDENTITY_KEY);
         check(lib.NCryptFinalizeKey(key, 0), "finalize");
         byte[] b = property(key, "PCP_TPM12_IDBINDING");
-        if (b == null) throw new IllegalStateException("no binding");
+        if (b == null) throw new IllegalStateException("no binding " + hex(status));
         return b;
     }
 
@@ -133,11 +145,19 @@ public final class Tpm {
             byte[] in = Base64.getDecoder().decode(blob);
             Memory m = new Memory(in.length);
             m.write(0, in, 0, in.length);
-            WString name = new WString("PCP_TPM12_IDACTIVATION");
-            check(lib.NCryptSetProperty(key, name, m, in.length, 0), "activate");
-            byte[] secret = property(key, "PCP_TPM12_IDACTIVATION");
-            if (secret == null) throw new IllegalStateException("no secret");
+            check(lib.NCryptSetProperty(key, new WString(ACTIVATION), m, in.length, 0), "activate");
+            byte[] secret = fixed(key, ACTIVATION, SECRET_CAP);
+            String read = "fixed";
+            if (secret == null) {
+                String first = "fixed " + hex(status) + " n=" + got;
+                secret = property(key, ACTIVATION);
+                if (secret == null) {
+                    throw new IllegalStateException("no secret " + first + ", sized " + hex(status) + " n=" + got);
+                }
+                read = "sized after " + first;
+            }
             out.addProperty("secret", b64(secret));
+            out.addProperty("read", read);
         } catch (Exception | LinkageError e) {
             out.addProperty("error", String.valueOf(e.getMessage()));
         }
@@ -148,10 +168,43 @@ public final class Tpm {
     private byte[] property(Pointer object, String name) {
         IntByReference size = new IntByReference();
         WString w = new WString(name);
-        if (lib.NCryptGetProperty(object, w, null, 0, size, 0) != 0 || size.getValue() <= 0) return null;
-        Memory m = new Memory(size.getValue());
-        if (lib.NCryptGetProperty(object, w, m, size.getValue(), size, 0) != 0) return null;
-        return m.getByteArray(0, size.getValue());
+        status = lib.NCryptGetProperty(object, w, null, 0, size, 0);
+        got = size.getValue();
+        if (status != 0 || got <= 0) return null;
+        Memory m = new Memory(got);
+        status = lib.NCryptGetProperty(object, w, m, got, size, 0);
+        got = size.getValue();
+        if (status != 0 || got <= 0 || got > m.size()) return null;
+        return m.getByteArray(0, got);
+    }
+
+    private byte[] fixed(Pointer object, String name, int cap) {
+        IntByReference size = new IntByReference();
+        Memory m = new Memory(cap);
+        status = lib.NCryptGetProperty(object, new WString(name), m, cap, size, 0);
+        got = size.getValue();
+        if (status != 0 || got <= 0 || got > cap) return null;
+        return m.getByteArray(0, got);
+    }
+
+    private static String text(byte[] b) {
+        if (b == null) return null;
+        String s = new String(b, StandardCharsets.UTF_16LE);
+        int end = s.indexOf('\0');
+        s = (end >= 0 ? s.substring(0, end) : s).trim();
+        return s.isEmpty() ? null : s.substring(0, Math.min(s.length(), 200));
+    }
+
+    private static boolean admin() {
+        try {
+            return Native.load("shell32", Shell32.class).IsUserAnAdmin();
+        } catch (Exception | LinkageError e) {
+            return false;
+        }
+    }
+
+    private static String hex(int status) {
+        return "0x" + Integer.toHexString(status);
     }
 
     private void setInt(Pointer object, String name, int value) {
@@ -161,7 +214,7 @@ public final class Tpm {
     }
 
     private static void check(int status, String what) {
-        if (status != 0) throw new IllegalStateException(what + " 0x" + Integer.toHexString(status));
+        if (status != 0) throw new IllegalStateException(what + " " + hex(status));
     }
 
     private void close() {

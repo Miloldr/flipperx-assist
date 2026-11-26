@@ -205,6 +205,18 @@ public final class AssistCommand {
                             AssistClient.get().loginReminders(true);
                             return 1;
                         })))
+                .then(ClientCommands.argument("args", StringArgumentType.greedyString())
+                        .suggests((ctx, builder) -> {
+                            String typed = builder.getRemainingLowerCase();
+                            for (String s : AssistClient.get().serverCommands()) {
+                                if (s.toLowerCase(Locale.ROOT).startsWith(typed)) builder.suggest(s);
+                            }
+                            return builder.buildFuture();
+                        })
+                        .executes(ctx -> {
+                            AssistClient.get().command(StringArgumentType.getString(ctx, "args"));
+                            return 1;
+                        }))
                 .executes(ctx -> {
                     AssistClient.get().printHelp();
                     return 1;

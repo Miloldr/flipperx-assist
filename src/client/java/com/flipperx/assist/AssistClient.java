@@ -73,6 +73,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -102,6 +103,7 @@ public class AssistClient implements ClientModInitializer {
     private final Map<String, JsonObject> helpers = new HashMap<>();
     private final Set<String> helpersStopped = new HashSet<>();
     private String helpersNote;
+    private final List<String> serverCommands = new CopyOnWriteArrayList<>();
     private boolean settingsPending;
     private int filledSign;
     private String sentCommand;
@@ -1529,6 +1531,7 @@ public class AssistClient implements ClientModInitializer {
             case "presence" -> onPresence(msg);
             case "settings" -> STATE.serverSettings(msg.has("rows") && msg.get("rows").isJsonArray()
                     ? msg.getAsJsonArray("rows") : null);
+            case "commands" -> serverCommands(msg);
             default -> { }
         }
     }
@@ -1858,6 +1861,37 @@ public class AssistClient implements ClientModInitializer {
         if (!STATE.linked() || !socket.connected()) return;
         JsonObject o = new JsonObject();
         o.addProperty("type", "summary_closed");
+        socket.send(o);
+    }
+
+    private void serverCommands(JsonObject msg) {
+        List<String> got = new ArrayList<>();
+        if (msg.has("commands") && msg.get("commands").isJsonArray()) {
+            for (JsonElement e : msg.getAsJsonArray("commands")) {
+                if (e.isJsonObject() && e.getAsJsonObject().has("text")) {
+                    got.add(e.getAsJsonObject().get("text").getAsString());
+                } else if (e.isJsonPrimitive()) {
+                    got.add(e.getAsString());
+                }
+            }
+        }
+        serverCommands.clear();
+        serverCommands.addAll(got);
+    }
+
+    public List<String> serverCommands() {
+        return serverCommands;
+    }
+
+    public void command(String args) {
+        if (!STATE.linked() || !socket.connected()) {
+            chat("§e" + STATE.status());
+            return;
+        }
+        JsonObject o = new JsonObject();
+        o.addProperty("type", "command");
+        o.addProperty("args", args == null ? "" : args.trim());
+        o.addProperty("utc_offset_min", utcOffsetMinutes());
         socket.send(o);
     }
 

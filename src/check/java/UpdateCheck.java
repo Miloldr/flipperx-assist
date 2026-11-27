@@ -50,6 +50,9 @@ public class UpdateCheck {
             return Updater.reason(e);
         }
     }
+    static String tampered(String sha) {
+        return (sha.charAt(0) == '0' ? "1" : "0") + sha.substring(1);
+    }
     static boolean refused(Runnable r) {
         try {
             r.run();
@@ -74,7 +77,9 @@ public class UpdateCheck {
         byte[] good = jar("bzassist", "0.1.16");
         Updater.verify(good, sha(good), "0.1.16");
         Updater.verify(good, sha(good).toUpperCase(), "0.1.16");
-        check(refused(() -> Updater.verify(good, "00" + sha(good).substring(2), "0.1.16")), "A wrong checksum was accepted");
+        String goodSha = sha(good);
+        String wrongSha = tampered(goodSha);
+        check(refused(() -> Updater.verify(good, wrongSha, "0.1.16")), "A wrong checksum was accepted");
         check(refused(() -> Updater.verify(good, null, "0.1.16")), "A missing checksum was accepted");
         check(refused(() -> Updater.verify(good, sha(good), "0.1.17")), "A jar of another version was accepted");
         byte[] other = jar("somethingelse", "0.1.16");
@@ -163,7 +168,7 @@ public class UpdateCheck {
                 check(agents.equals(List.of("bzassist/0.1.18")), "The download did not name itself: " + agents);
 
                 String bad = downloadFailure(new VersionCheck.Release("0.1.19", VersionCheck.PAGE,
-                        base.resolve("/public/assistmod"), "00" + sha(served).substring(2), served.length), dir);
+                        base.resolve("/public/assistmod"), tampered(sha(served)), served.length), dir);
                 check(bad.contains("checksum"), "A tampered download gave: " + bad);
                 String cut = downloadFailure(new VersionCheck.Release("0.1.19", VersionCheck.PAGE,
                         base.resolve("/public/assistmod"), sha(served), served.length + 1), dir);

@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.flipperx.assist.mixin.PlayerListHudAccessor;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.client.gui.screens.inventory.AbstractSignEditScreen;
@@ -51,7 +52,36 @@ public final class ScreenReader {
         o.add("sidebar", toArray(sidebarLines()));
         JsonObject cookie = cookie();
         if (cookie != null) o.add("cookie", cookie);
+        JsonArray forges = forges();
+        if (forges != null) o.add("forges", forges);
         return o;
+    }
+
+    private static JsonArray forges() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null || mc.getConnection() == null) return null;
+        PlayerListHudAccessor acc = (PlayerListHudAccessor) (Object) Compat.tabList();
+        if (acc == null) return null;
+        List<PlayerInfo> infos;
+        try {
+            infos = acc.bzassist$getPlayerInfos();
+        } catch (Throwable t) {
+            return null;
+        }
+        JsonArray out = null;
+        for (PlayerInfo info : infos) {
+            Component name = info.getTabListDisplayName();
+            if (name == null) continue;
+            String line = GameUtil.strip(name.getString()).trim();
+            if (out == null) {
+                if (line.startsWith("Forges")) out = new JsonArray();
+                continue;
+            }
+            if (line.isEmpty()) continue;
+            if (!line.matches("\\d\\).*")) break;
+            out.add(line);
+        }
+        return out == null || out.isEmpty() ? null : out;
     }
 
     private static JsonArray slots(boolean playerHalf) {

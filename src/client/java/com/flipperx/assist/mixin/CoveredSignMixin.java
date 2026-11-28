@@ -18,7 +18,7 @@ public abstract class CoveredSignMixin {
     private void bzassist$drawMenu(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta,
                                    CallbackInfo ci) {
         if (!(AssistClient.covering((Screen) (Object) this) instanceof AbstractContainerScreen<?> menu)) return;
-        if (!HeldMenu.drawOver(menu, graphics, delta, AssistClient.coverClosedAt())) {
+        if (!HeldMenu.drawOver(menu, graphics, delta, AssistClient.coverSince())) {
             AssistClient.uncover();
             return;
         }

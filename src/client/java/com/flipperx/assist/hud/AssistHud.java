@@ -155,8 +155,13 @@ public final class AssistHud {
         int bars = (finish != null ? 1 : 0) + (limit != null ? 1 : 0) + (goal != null ? 1 : 0);
 
         Font font = mc.font;
+        String runText = money ? runLeft(state) : "";
+        int profitWidth = font.width("Profit " + compact(state.profit()));
+        boolean runInline = !runText.isEmpty() && profitWidth + font.width(" " + runText) <= inner;
+        int runLines = !runText.isEmpty() && !runInline ? 1 : 0;
         List<FormattedCharSequence> moneySpill = money
-                ? spill(font, font.width("Profit " + compact(state.profit())), moneyRight(state), inner) : List.of();
+                ? spill(font, runInline ? profitWidth + font.width(" " + runText) : profitWidth,
+                        moneyRight(state), inner) : List.of();
         List<List<FormattedCharSequence>> rowSpills = new ArrayList<>();
         for (AssistState.Row row : rows) rowSpills.add(spill(font, rowLeftWidth(font, row), row.right(), inner));
         List<FormattedCharSequence> finishSpill = finish != null
@@ -165,7 +170,7 @@ public final class AssistHud {
                 ? spill(font, font.width(LIMIT_LABEL), limitRight(limit), inner) : List.of();
         List<FormattedCharSequence> goalSpill = goal != null
                 ? spill(font, font.width(goalName(goal)), goalRight(goal), inner) : List.of();
-        int spilled = moneySpill.size() + finishSpill.size() + limitSpill.size() + goalSpill.size();
+        int spilled = moneySpill.size() + runLines + finishSpill.size() + limitSpill.size() + goalSpill.size();
         for (List<FormattedCharSequence> r : rowSpills) spilled += r.size();
 
         int titleHeight = Math.max(iconSpace ? 16 : LINE, titles.size() * LINE);
@@ -228,8 +233,8 @@ public final class AssistHud {
         }
         moneyX = goalX = Float.NaN;
         if (money) {
-            drawMoney(g, font, state, x + PAD, x + width - PAD, cursor, now, moneySpill);
-            cursor += LINE * (1 + moneySpill.size());
+            drawMoney(g, font, state, x + PAD, x + width - PAD, cursor, now, moneySpill, runText, runInline);
+            cursor += LINE * (1 + runLines + moneySpill.size());
         }
         for (int i = 0; i < rows.size(); i++) {
             drawRow(g, font, rows.get(i), x + PAD, x + width - PAD, cursor, rowSpills.get(i));
@@ -278,7 +283,15 @@ public final class AssistHud {
 
     private static String moneyRight(AssistState state) {
         Double rate = state.profitPerHour();
-        return rate == null ? "this session" : compact(rate) + "/h";
+        if (rate != null) return compact(rate) + "/h";
+        return runLeft(state).isEmpty() ? "this session" : "";
+    }
+
+    private static String runLeft(AssistState state) {
+        AssistState.RunTime run = state.runTime();
+        if (run == null || run.left().isEmpty()) return "";
+        String time = duration(run.secondsAt(System.currentTimeMillis()) / 3600.0).replace(' ', '\u00a0');
+        return run.left().replace("{time}", time);
     }
 
     private static int rowLeftWidth(Font font, AssistState.Row row) {
@@ -303,7 +316,8 @@ public final class AssistHud {
     }
 
     private static void drawMoney(GuiGraphicsExtractor g, Font font, AssistState state, int left, int right,
-                                  int top, long now, List<FormattedCharSequence> spill) {
+                                  int top, long now, List<FormattedCharSequence> spill, String runText,
+                                  boolean runInline) {
         double target = state.profit();
         if (Double.isNaN(shownProfit)) {
             shownProfit = countFrom = countTo = target;
@@ -325,15 +339,47 @@ public final class AssistHud {
         int vw = font.width(value);
         moneyX = left + lw + vw / 2f;
         moneyY = top;
+        int end = left + lw + vw;
+        String rightText = moneyRight(state);
+        float rightAlpha = 1f, runAlpha = 1f;
+        float pop = 0f;
+        int lift = 0;
+        String d = "";
         if (deltaAt != 0 && now - deltaAt < DELTA_MS) {
             float a = now - deltaAt;
             float in = Math.min(1f, a / 140f);
             float out = a > DELTA_MS * 0.7f ? 1f - (a - DELTA_MS * 0.7f) / (DELTA_MS * 0.3f) : 1f;
-            int lift = Math.round((1f - easeOut3(Math.min(1f, a / 260f))) * 3f);
-            g.text(font, plus(delta), left + lw + vw + 5, top + lift,
-                   argb(delta < 0 ? WARN : AMBER, in * out * dim), false);
+            pop = in * out;
+            lift = Math.round((1f - easeOut3(Math.min(1f, a / 260f))) * 3f);
+            d = plus(delta);
         }
-        drawRight(g, font, moneyRight(state), spill, left, right, top);
+        int runWidth = runInline ? font.width(" " + runText) : 0;
+        boolean popOverRun = pop > 0 && runInline && end + runWidth + 5 + font.width(d) > right;
+        if (popOverRun) runAlpha = 1f - pop;
+        if (runInline) {
+            g.text(font, " " + runText, end, top, argb(DIM, runAlpha * dim), false);
+        } else if (!runText.isEmpty()) {
+            g.text(font, runText, left, top + LINE, argb(DIM, dim), false);
+        }
+        if (pop > 0) {
+            int at = popOverRun ? end + 5 : end + runWidth + 5;
+            g.text(font, d, at, top + lift, argb(delta < 0 ? WARN : AMBER, pop * dim), false);
+            if (spill.isEmpty() && at + font.width(d) + TEXT_GAP > right - font.width(rightText)) {
+                rightAlpha = 1f - pop;
+            }
+        }
+        int runLines = !runText.isEmpty() && !runInline ? 1 : 0;
+        if (spill.isEmpty()) {
+            if (!rightText.isEmpty()) {
+                g.text(font, rightText, right - font.width(rightText), top, argb(DIM, rightAlpha * dim), false);
+            }
+            return;
+        }
+        int y = top + LINE * (1 + runLines);
+        for (FormattedCharSequence line : spill) {
+            g.text(font, line, left, y, argb(DIM, dim), false);
+            y += LINE;
+        }
     }
 
     private static void drawRow(GuiGraphicsExtractor g, Font font, AssistState.Row row, int left, int right,

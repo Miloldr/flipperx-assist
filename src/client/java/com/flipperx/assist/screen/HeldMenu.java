@@ -14,19 +14,22 @@ import net.minecraft.network.chat.Component;
 public final class HeldMenu extends Screen {
     public static final long SIGN_MS = 1500;
     private static final int OFF = -10_000;
-    private static final long DIM_AFTER_MS = 100;
-    private static final int DIM = 0x80000000;
+    private static final long DIM_AFTER_MS = 40;
+    private static final long DIM_FADE_MS = 120;
+    private static final int DIM_ALPHA = 0x80;
 
     private final long since = System.currentTimeMillis();
     private final long forMs;
     private AbstractContainerScreen<?> menu;
     private long closedAt;
+    private final long dimFrom;
 
-    public HeldMenu(AbstractContainerScreen<?> menu, long forMs, long closedAt) {
+    public HeldMenu(AbstractContainerScreen<?> menu, long forMs, long closedAt, long dimFrom) {
         super(Component.empty());
         this.menu = menu;
         this.forMs = forMs;
         this.closedAt = closedAt;
+        this.dimFrom = dimFrom;
     }
 
     public AbstractContainerScreen<?> menu() {
@@ -53,15 +56,22 @@ public final class HeldMenu extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
-        if (menu != null && !contents(menu, graphics, delta, closedAt)) menu = null;
+        if (menu != null && !contents(menu, graphics, delta, dimFrom)) menu = null;
     }
 
     public static boolean drawOver(AbstractContainerScreen<?> menu, GuiGraphicsExtractor graphics, float delta,
-                                   long closedAt) {
+                                   long dimFrom) {
         graphics.nextStratum();
         if (!background(menu, graphics, delta)) return false;
         graphics.nextStratum();
-        return contents(menu, graphics, delta, closedAt);
+        return contents(menu, graphics, delta, dimFrom);
+    }
+
+    public static int dimAlpha(long dimFrom, long now) {
+        if (dimFrom <= 0) return 0;
+        long t = now - dimFrom - DIM_AFTER_MS;
+        if (t <= 0) return 0;
+        return (int) (DIM_ALPHA * Math.min(1.0, (double) t / DIM_FADE_MS));
     }
 
     private static boolean background(AbstractContainerScreen<?> menu, GuiGraphicsExtractor graphics, float delta) {
@@ -74,14 +84,15 @@ public final class HeldMenu extends Screen {
     }
 
     private static boolean contents(AbstractContainerScreen<?> menu, GuiGraphicsExtractor graphics, float delta,
-                                    long closedAt) {
+                                    long dimFrom) {
         try {
             menu.extractRenderState(graphics, OFF, OFF, delta);
-            if (closedAt == 0 || System.currentTimeMillis() - closedAt < DIM_AFTER_MS) return true;
+            int alpha = dimAlpha(dimFrom, System.currentTimeMillis());
+            if (alpha <= 0) return true;
             AbstractContainerScreenAccessor at = (AbstractContainerScreenAccessor) menu;
             int left = at.bzassist$getLeftPos(), top = at.bzassist$getTopPos();
             graphics.nextStratum();
-            graphics.fill(left, top, left + at.bzassist$getImageWidth(), top + at.bzassist$getImageHeight(), DIM);
+            graphics.fill(left, top, left + at.bzassist$getImageWidth(), top + at.bzassist$getImageHeight(), alpha << 24);
             return true;
         } catch (Throwable t) {
             return false;

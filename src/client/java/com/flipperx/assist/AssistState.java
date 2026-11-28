@@ -79,6 +79,7 @@ public final class AssistState {
     private volatile boolean linked = false;
     private volatile double profit = 0;
     private volatile Double profitPerHour = null;
+    private volatile RunTime runTime = null;
     public record Goal(String label, double target, double progress, Double etaHours) {}
     private volatile Goal goal = null;
     public record Limit(double used, double cap, double left, Double hoursLeft) {}
@@ -86,6 +87,12 @@ public final class AssistState {
     public record Finish(String label, String right, double solid, double light, boolean time) {}
     private volatile Finish finish = null;
     public record Row(String label, String value, String right) {}
+
+    public record RunTime(double seconds, boolean ticking, long at, String left) {
+        public double secondsAt(long now) {
+            return seconds + (ticking ? Math.max(0, now - at) / 1000.0 : 0);
+        }
+    }
     public record Mark(int slot, String name, int background, String lore, int loreColor) {}
     private volatile java.util.List<Mark> marks = java.util.List.of();
     public record OrdersTotal(String title, String text, int color, java.util.List<net.minecraft.network.chat.Component> lines) {}
@@ -151,6 +158,7 @@ public final class AssistState {
         resumeUntil = 0;
         profit = 0;
         profitPerHour = null;
+        runTime = null;
         goal = null;
         limit = null;
         finish = null;
@@ -164,6 +172,7 @@ public final class AssistState {
 
     public double profit() { return profit; }
     public Double profitPerHour() { return profitPerHour; }
+    public RunTime runTime() { return runTime; }
     public Goal goal() { return goal; }
     public Limit limit() { return limit; }
     public Finish finish() { return finish; }
@@ -241,6 +250,15 @@ public final class AssistState {
         }
         this.profitPerHour = hud.has("profit_per_hour") && !hud.get("profit_per_hour").isJsonNull()
                 ? hud.get("profit_per_hour").getAsDouble() : null;
+        this.runTime = null;
+        if (hud.has("run") && hud.get("run").isJsonObject()) {
+            JsonObject r = hud.getAsJsonObject("run");
+            if (r.has("s") && r.get("s").isJsonPrimitive()) {
+                this.runTime = new RunTime(r.get("s").getAsDouble(),
+                        r.has("ticking") && r.get("ticking").getAsBoolean(), System.currentTimeMillis(),
+                        text(r, "left"));
+            }
+        }
         this.cookieWarning = cookieWarningFrom(hud);
         this.goal = null;
         if (hud.has("goal") && hud.get("goal").isJsonObject()) {

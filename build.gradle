@@ -77,6 +77,13 @@ tasks.register('reportsCheck', JavaExec) {
 }
 tasks.named('check') { dependsOn 'reportsCheck' }
 
+tasks.register('lagCheck', JavaExec) {
+    dependsOn checkClasses
+    classpath = sourceSets.check.runtimeClasspath
+    mainClass = 'LagCheck'
+}
+tasks.named('check') { dependsOn 'lagCheck' }
+
 tasks.register('ghostCheck', JavaExec) {
     dependsOn checkClasses
     classpath = sourceSets.check.runtimeClasspath

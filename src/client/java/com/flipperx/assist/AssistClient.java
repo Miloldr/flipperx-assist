@@ -15,6 +15,7 @@ import com.flipperx.assist.mixin.SignEditScreenAccessor;
 import com.flipperx.assist.net.AssistSocket;
 import com.flipperx.assist.net.Tpm;
 import com.flipperx.assist.net.DiscordPresence;
+import com.flipperx.assist.net.Lag;
 import com.flipperx.assist.net.Reports;
 import com.flipperx.assist.net.StatusCheck;
 import com.flipperx.assist.net.VersionCheck;
@@ -123,6 +124,7 @@ public class AssistClient implements ClientModInitializer {
     private static final long WORLD_GONE_MS = 15_000;
     private boolean authBlocked;
     private final Reports reports = new Reports();
+    private final Lag lag = new Lag();
     private int reportedContext;
     private int acceptedContext;
     private String acceptedSlotName;
@@ -151,6 +153,7 @@ public class AssistClient implements ClientModInitializer {
     private HeldMenu keptMenu;
     private Screen coveredSign;
     private long coverUntil;
+    private long coverSince;
     private static final long COVER_MS = 1_500;
     private static final long CLICK_ANSWER_MS = 3_000;
     private AbstractContainerScreen<?> clickedMenu;
@@ -240,9 +243,11 @@ public class AssistClient implements ClientModInitializer {
             client.clickedHash = client.screenHash();
             client.clickedContext = client.screenContext();
             client.noteClick(slot.index, true, step.keepMs());
+            if (client.lag.on()) client.lag.click(true, slot.index);
         } else {
             client.clickedSlot = -1;
             client.noteClick(slot.index, false, 0);
+            if (STATE.running() && client.lag.on()) client.lag.click(false, slot.index);
         }
         JsonObject o = new JsonObject();
         o.addProperty("slot", slot.index);
@@ -260,6 +265,7 @@ public class AssistClient implements ClientModInitializer {
         if (client == null) return;
         long now = System.nanoTime();
         client.menuPacketAt = now;
+        if (STATE.running() && client.lag.on()) client.lag.packet();
         if (!client.flushQueued.compareAndSet(false, true)) return;
         client.menuHeldSince = now;
         FLUSH_TIMER.schedule(client::flushWhenQuiet, MENU_QUIET_NS, TimeUnit.NANOSECONDS);
@@ -427,6 +433,13 @@ public class AssistClient implements ClientModInitializer {
 
         maybeOpenSummary();
         if (!flushQueued.get() || System.nanoTime() - menuHeldSince > MENU_STUCK_NS) maybeReport();
+        sendLag(false);
+    }
+
+    private void sendLag(boolean now) {
+        if (!lag.on() || !authSent || !socket.connected()) return;
+        JsonObject o = lag.take(now);
+        if (o != null) socket.send(o);
     }
 
     private void checkVersion(Minecraft client) {
@@ -923,6 +936,7 @@ public class AssistClient implements ClientModInitializer {
         AssistClient client = instance;
         if (client == null) return;
         client.coveredSign = null;
+        client.coverSince = 0;
         Screen screen = GameUtil.shownScreen();
         if (GameUtil.handler() != null) {
             client.lastMenuTitle = GameUtil.screenTitle().toLowerCase(Locale.ROOT);
@@ -946,7 +960,8 @@ public class AssistClient implements ClientModInitializer {
         long keep = client.keepFor(menu);
         if (keep <= 0) return;
         client.lastMenuTitle = GameUtil.screenTitle().toLowerCase(Locale.ROOT);
-        client.keptMenu = new HeldMenu(menu, keep, System.currentTimeMillis());
+        long now = System.currentTimeMillis();
+        client.keptMenu = new HeldMenu(menu, keep, now, now);
     }
 
     private void noteClick(int slot, boolean onStep, long keepMs) {
@@ -980,6 +995,7 @@ public class AssistClient implements ClientModInitializer {
 
     public static Screen screenFor(Screen screen) {
         AssistClient client = instance;
+        if (client != null && STATE.running() && client.lag.on()) client.lag.screen();
         if (screen != null || client == null) return screen;
         HeldMenu kept = client.keptMenu;
         client.keptMenu = null;
@@ -997,7 +1013,7 @@ public class AssistClient implements ClientModInitializer {
                 || !step.signOf().opensFrom(lastMenuTitle)) return null;
         String[] lines = ((SignEditScreenAccessor) sign).bzassist$getMessages();
         if (lines == null || lines.length == 0 || lines[0] == null) return null;
-        return step.text().equalsIgnoreCase(lines[0].trim()) ? new HeldMenu(menu, HeldMenu.SIGN_MS, signMenuClosedAt) : null;
+        return step.text().equalsIgnoreCase(lines[0].trim()) ? new HeldMenu(menu, HeldMenu.SIGN_MS, signMenuClosedAt, waitSince()) : null;
     }
 
     public static Screen covering(Screen screen) {
@@ -1010,8 +1026,13 @@ public class AssistClient implements ClientModInitializer {
         return client.signMenu;
     }
 
-    public static long coverClosedAt() {
-        return instance == null ? 0 : instance.signMenuClosedAt;
+    public static long coverSince() {
+        return instance == null ? 0 : instance.coverSince;
+    }
+
+    private long waitSince() {
+        long now = System.currentTimeMillis();
+        return coverSince > 0 && now - coverSince <= COVER_MS ? coverSince : now;
     }
 
     public static void uncover() {
@@ -1027,7 +1048,8 @@ public class AssistClient implements ClientModInitializer {
         if (!STATE.running() || !client.clickedLately(client.signMenu)
                 || !(GameUtil.currentScreen() instanceof AbstractSignEditScreen sign)) return;
         client.coveredSign = sign;
-        client.coverUntil = System.currentTimeMillis() + COVER_MS;
+        client.coverSince = System.currentTimeMillis();
+        client.coverUntil = client.coverSince + COVER_MS;
         ScreenMouseEvents.allowMouseClick(sign).register((screen, event) -> covering(screen) == null);
     }
 
@@ -1058,7 +1080,7 @@ public class AssistClient implements ClientModInitializer {
             maybeReport();
             AbstractContainerScreen<?> menu = signMenu;
             signMenu = null;
-            Compat.setScreen(new HeldMenu(menu, HeldMenu.SIGN_MS, signMenuClosedAt));
+            Compat.setScreen(new HeldMenu(menu, HeldMenu.SIGN_MS, signMenuClosedAt, waitSince()));
         }
     }
 
@@ -1162,6 +1184,7 @@ public class AssistClient implements ClientModInitializer {
             if (pipelined) tick.addProperty("pipelined", true);
         }
         if (!socket.send(tick)) return;
+        if (STATE.running() && reports.numbered() && lag.on()) lag.report(seq);
         forceReport = false;
         clickToReport = null;
         lastScreenHash = hash;
@@ -1225,6 +1248,7 @@ public class AssistClient implements ClientModInitializer {
         String name = reportedSlotNames.get(incoming.slot());
         if (!targetMatches(incoming, name)) return;
         STATE.receiveStep(incoming, false);
+        if (lag.on()) lag.shown(Lag.SHOWN_EARLY, incoming.label());
         acceptedContext = answered;
         acceptedSlotName = name;
         if (Location.skyBlock()) fillSign();
@@ -1334,6 +1358,7 @@ public class AssistClient implements ClientModInitializer {
         if (landing) clickedSlot = -1;
         aheadSeq = reports.next() - 1;
         STATE.receiveStep(t.step().ahead(slot, STATE.step()), false);
+        if (lag.on()) lag.shown(Lag.SHOWN_AHEAD, t.step().label());
         acceptedContext = context;
         acceptedSlotName = name;
     }
@@ -1411,6 +1436,7 @@ public class AssistClient implements ClientModInitializer {
                 authUuid = currentUuid();
                 if (msg.has("deflate") && msg.get("deflate").getAsBoolean()) socket.deflate();
                 reports.numbered(msg.has("seq") && msg.get("seq").getAsBoolean());
+                lag.on(msg.has("lag") && msg.get("lag").getAsBoolean());
                 if (msg.has("tpm") && msg.get("tpm").getAsBoolean()) tpm.onAuthOk();
                 if (msg.has("idle_tick_ms")) tickEveryMs = Math.max(250, Math.min(10_000, msg.get("idle_tick_ms").getAsLong()));
                 boolean running = msg.has("running") && msg.get("running").getAsBoolean();
@@ -1447,6 +1473,7 @@ public class AssistClient implements ClientModInitializer {
             case "step" -> {
                 long seq = msg.has("seq") && !msg.get("seq").isJsonNull() ? msg.get("seq").getAsLong() : -1;
                 int answered = reports.context(seq, reportedContext);
+                if (seq >= 0 && STATE.running() && lag.on()) lag.answer(seq);
                 if (reports.stale(seq)) {
                     if (!discardStep && STATE.running() && seq > aheadSeq) {
                         notePrefetch(msg, answered, false);
@@ -1486,6 +1513,7 @@ public class AssistClient implements ClientModInitializer {
                         ? System.currentTimeMillis() + Math.max(0, Math.min(5_000, msg.get("again_ms").getAsLong()))
                         : 0;
                 STATE.receiveStep(incoming, pending);
+                if (!pending && incoming.isPlayers() && lag.on()) lag.shown(Lag.SHOWN_ANSWER, incoming.label());
                 acceptedContext = reportedContext;
                 acceptedSlotName = targetName;
                 if (!pending) notePrefetch(msg, reportedContext, !"wait".equals(incoming.kind()));
@@ -1668,6 +1696,7 @@ public class AssistClient implements ClientModInitializer {
     }
 
     public void stop() {
+        sendLag(true);
         JsonObject o = new JsonObject();
         o.addProperty("type", "stop");
         socket.send(o);
